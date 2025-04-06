@@ -1,0 +1,13 @@
+# 가상환경 및 캐시 파일
+venv/
+__pycache__/
+*.pyc
+
+# 로컬 DB
+db.sqlite3
+
+# 환경 변수 파일
+.env
+
+# macOS 특유의 숨김 파일
+.DS_Store
