@@ -9,8 +9,10 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
+from datetime import timedelta
 import os
 from pathlib import Path
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,6 +26,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+AUTH_USER_MODEL = 'users.User'
 
 
 ALLOWED_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1','*', '172.20.26.173']
@@ -40,6 +43,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "ballrae_backend.users", # 이형태 그대로
 ]
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -77,6 +81,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "ballrae_backend.wsgi.application"
 
+SIMPLE_JWT = {
+    'USER_ID_FIELD': 'id',   # ✅ 기본 키 필드명
+    "USER_ID_CLAIM": "user_id",      # ✅ 토큰에 저장될 claim 키
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
