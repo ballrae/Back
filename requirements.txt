@@ -8,4 +8,4 @@ kafka-python==2.2.2
 
 
 requests
-djangorestframework
+djangorestframework-simplejwt
