@@ -1,0 +1,92 @@
+[
+{
+    "model": "teams.team",
+    "pk": "HH",
+    "fields": {
+      "team_name": "한화 이글스",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_HH.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "OB",
+    "fields": {
+      "team_name": "두산 베어스",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_OB.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "KT",
+    "fields": {
+      "team_name": "KT 위즈",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_KT.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "LG",
+    "fields": {
+      "team_name": "LG 트윈스",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_LG.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "HT",
+    "fields": {
+      "team_name": "KIA 타이거즈",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_HT.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "LT",
+    "fields": {
+      "team_name": "롯데 자이언츠",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_LT.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "SS",
+    "fields": {
+      "team_name": "삼성 라이온즈",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_SS.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "WO",
+    "fields": {
+      "team_name": "키움 히어로즈",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_WO.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "NC",
+    "fields": {
+      "team_name": "NC 다이노스",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_NC.png",
+      "field": null
+    }
+  },
+  {
+    "model": "teams.team",
+    "pk": "SK",
+    "fields": {
+      "team_name": "SSG 랜더스",
+      "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_SK.png",
+      "field": null
+    }
+  }
+]

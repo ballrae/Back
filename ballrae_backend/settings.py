@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "ballrae_backend.users", # 이형태 그대로
+    "ballrae_backend.teams", 
+    "ballrae_backend.posts", 
 ]
 
 
