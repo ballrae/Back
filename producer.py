@@ -9,9 +9,9 @@ from collections import defaultdict
 # producer 전송 함수
 def produce(topic, result, producer):
     for key, value in result.items():
-        print(f"전송 데이터: key = {key}, value = {value}")
+        # print(f"전송 데이터: key = {key}, value = {value}")
         producer.send(topic, key=str(key).encode('utf-8'), value=value)
-    
+
     producer.flush()
     print(f"✅ Kafka에 {len(result)}개의 메시지를 전송했습니다.")
 
@@ -70,7 +70,9 @@ def process_pitch_and_events(options: List[Dict]) -> (List[Dict], str):
                 "pitch_result": text.replace(f"{pitch_num}구 ", "")
             })
         elif "투수판 이탈" in text:
-            pitch_sequence.append({"event": "투수판 이탈"})
+            pitch_sequence.append({"event": text})
+        elif "체크 스윙" in text:
+            pitch_sequence.append({"event": text})
         elif ":" in text and "타자" not in text:
             result_parts.append(text)
 
@@ -96,6 +98,11 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
             if "batterRecord" in opt:
                 actual_batter = opt["batterRecord"].get("name")
                 bat_order = opt["batterRecord"].get("batOrder")
+            
+            if not actual_batter:
+                match = re.search(r"\d+번타자\s+(\S+)", text)
+                if match:
+                    actual_batter = match.group(1)
 
             text = opt.get("text", "")
             match = re.search(r"(\d+)번타자\s+(\S+)\s+:\s+대타\s+(\S+)", text)
@@ -149,6 +156,26 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
                 if bat_order == prev_bat_order:
                     idx = pitch_merge_tracker[current_at_bat_key]
                     at_bats[idx]["result"] += f"|{result}"
+        
+        # 👇 pitch_sequence가 없어도 appearance_number가 올라가고 result 없이 추가되도록 수정
+        elif actual_batter:
+            if pending_sub and pending_sub["actual_batter"] == actual_batter:
+                at_bats.append(pending_sub)
+                pending_sub = None
+
+            merge_key = (bat_order, actual_batter, appearance_number)
+            if merge_key not in pitch_merge_tracker:
+                at_bats.append({
+                    "inning": inning,
+                    "half": half,
+                    "bat_order": bat_order,
+                    "original_batter": None,
+                    "actual_batter": actual_batter,
+                    "appearance_number": appearance_number,
+                    "result": result or "(진행 중)",
+                    "pitch_sequence": pitch_sequence or []
+                })
+                pitch_merge_tracker[merge_key] = len(at_bats) - 1
 
     return at_bats
 
@@ -190,13 +217,13 @@ def crawling(date: str, away: str, home: str, dh) -> Dict:
     return result
 
 def main():
-    date = '20250322'
-    away, home = 'NC', 'HT'
+    date = '20250522'
+    away, home = 'HH', 'NC'
     dh = 0
     topic = '2025'
 
     producer = KafkaProducer(
-        bootstrap_servers='localhost:9092',
+        bootstrap_servers='kafka:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
 
@@ -212,7 +239,7 @@ def main():
             print("⏳ 새 데이터 없음")
 
         time.sleep(10)
-        if time.time() - start_time >= 5 * 60:
+        if time.time() - start_time >= 4 * 60 * 60:     # 우선 5시간으로 자동화 -> 경기 종료 시그널 들어오면 경기 종료되도록 수정할것
             break
 
 if __name__ == "__main__":
