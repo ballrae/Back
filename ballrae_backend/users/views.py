@@ -33,7 +33,7 @@ class KakaoLogin(APIView):
         kakao_id = str(user_info.get('id'))
         nickname = user_info.get('properties', {}).get('nickname') or f"user_{kakao_id}"
 
-        # ✅ DB 저장 or 조회 (kakao_id 기준)
+        # DB 저장 or 조회 (kakao_id 기준)
         user, created = User.objects.get_or_create(
             kakao_id=kakao_id,
             defaults={
@@ -41,16 +41,23 @@ class KakaoLogin(APIView):
             }
         )
 
+        # 닉네임 갱신 로직 추가 ✅
+        if not created and user.user_nickname.startswith('user_'):
+            user.user_nickname = nickname
+            user.save()
+
         tokens = get_tokens_for_user(user)
 
         return Response({
             "status": "success",
             "message": "로그인 및 JWT 발급 성공",
             "data": {
-                "user_id": user.id,  # ✅ 기본키 필드는 이제 user.id 로 사용
+                "user_id": user.id,  #  기본키 필드는 이제 user.id 로 사용
                 "kakao_id": user.kakao_id,
                 "user_nickname": user.user_nickname,
                 "created_at": user.created_at,
+                "team_name": user.team.team_name if user.team else None,   # ✅ 추가
+                "team_id": user.team.id if user.team else None,   # ✅ 추가
                 "tokens": tokens
             }
         }, status=200)
@@ -72,3 +79,16 @@ class SetMyTeamView(APIView):
             }, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+# 유저 정보 조회
+class MyInfoView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            "user_nickname": user.user_nickname,
+            "team_id": user.team.id if user.team else None,
+            "team_name": user.team.team_name if user.team else None,
+        }, status=200)
