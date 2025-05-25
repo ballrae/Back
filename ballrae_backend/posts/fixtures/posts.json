@@ -1,0 +1,242 @@
+[
+  {
+    "model": "posts.post",
+    "pk": 1,
+    "fields": {
+      "user": 1,
+      "team": "HH",
+      "post_title": "[공지] 한화 이글스 팬 모집 공고",
+      "post_content": "한화 이글스 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 2,
+    "fields": {
+      "user": 1,
+      "team": "HH",
+      "post_title": "한화 이글스 오늘 경기 정보 공유",
+      "post_content": "오늘 한화 이글스의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 3,
+    "fields": {
+      "user": 1,
+      "team": "OB",
+      "post_title": "[공지] 두산 베어스 팬 모집 공고",
+      "post_content": "두산 베어스 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 4,
+    "fields": {
+      "user": 1,
+      "team": "OB",
+      "post_title": "두산 베어스 오늘 경기 정보 공유",
+      "post_content": "오늘 두산 베어스의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 5,
+    "fields": {
+      "user": 1,
+      "team": "KT",
+      "post_title": "[공지] KT 위즈 팬 모집 공고",
+      "post_content": "KT 위즈 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 6,
+    "fields": {
+      "user": 1,
+      "team": "KT",
+      "post_title": "KT 위즈 오늘 경기 정보 공유",
+      "post_content": "오늘 KT 위즈의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 7,
+    "fields": {
+      "user": 1,
+      "team": "LG",
+      "post_title": "[공지] LG 트윈스 팬 모집 공고",
+      "post_content": "LG 트윈스 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 8,
+    "fields": {
+      "user": 1,
+      "team": "LG",
+      "post_title": "LG 트윈스 오늘 경기 정보 공유",
+      "post_content": "오늘 LG 트윈스의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 9,
+    "fields": {
+      "user": 1,
+      "team": "HT",
+      "post_title": "[공지] KIA 타이거즈 팬 모집 공고",
+      "post_content": "KIA 타이거즈 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 10,
+    "fields": {
+      "user": 1,
+      "team": "HT",
+      "post_title": "KIA 타이거즈 오늘 경기 정보 공유",
+      "post_content": "오늘 KIA 타이거즈의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 11,
+    "fields": {
+      "user": 1,
+      "team": "LT",
+      "post_title": "[공지] 롯데 자이언츠 팬 모집 공고",
+      "post_content": "롯데 자이언츠 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 12,
+    "fields": {
+      "user": 1,
+      "team": "LT",
+      "post_title": "롯데 자이언츠 오늘 경기 정보 공유",
+      "post_content": "오늘 롯데 자이언츠의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 13,
+    "fields": {
+      "user": 1,
+      "team": "SS",
+      "post_title": "[공지] 삼성 라이온즈 팬 모집 공고",
+      "post_content": "삼성 라이온즈 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 14,
+    "fields": {
+      "user": 1,
+      "team": "SS",
+      "post_title": "삼성 라이온즈 오늘 경기 정보 공유",
+      "post_content": "오늘 삼성 라이온즈의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 15,
+    "fields": {
+      "user": 1,
+      "team": "WO",
+      "post_title": "[공지] 키움 히어로즈 팬 모집 공고",
+      "post_content": "키움 히어로즈 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 16,
+    "fields": {
+      "user": 1,
+      "team": "WO",
+      "post_title": "키움 히어로즈 오늘 경기 정보 공유",
+      "post_content": "오늘 키움 히어로즈의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 17,
+    "fields": {
+      "user": 1,
+      "team": "NC",
+      "post_title": "[공지] NC 다이노스 팬 모집 공고",
+      "post_content": "NC 다이노스 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 18,
+    "fields": {
+      "user": 1,
+      "team": "NC",
+      "post_title": "NC 다이노스 오늘 경기 정보 공유",
+      "post_content": "오늘 NC 다이노스의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 19,
+    "fields": {
+      "user": 1,
+      "team": "SK",
+      "post_title": "[공지] SSG 랜더스 팬 모집 공고",
+      "post_content": "SSG 랜더스 팬을 모집합니다. 많은 참여 부탁드려요!",
+      "post_created_at": "2025-04-01T00:00:00Z",
+      "is_pinned": true
+    }
+  },
+  {
+    "model": "posts.post",
+    "pk": 20,
+    "fields": {
+      "user": 1,
+      "team": "SK",
+      "post_title": "SSG 랜더스 오늘 경기 정보 공유",
+      "post_content": "오늘 SSG 랜더스의 경기 라인업 공유합니다. 함께 응원해요!",
+      "post_created_at": "2025-05-03T00:00:00Z",
+      "is_pinned": false
+    }
+  }
+]
