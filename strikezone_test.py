@@ -50,6 +50,9 @@ for i, (x, z) in enumerate(points):
     ax.scatter(x, z, s=200, color=color, edgecolors='white', linewidth=1.5, zorder=3)
     ax.text(x, z, str(i+1), color='black', ha='center', va='center', fontsize=10, weight='bold')
 
+fig.patch.set_alpha(0.0)      # 전체 배경 투명
+ax.patch.set_alpha(0.0)       # 플롯 영역도 투명
+
 # 설정
 ax.set_xlim(-2, 2)
 ax.set_ylim(0, 4.5)

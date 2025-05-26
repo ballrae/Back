@@ -6,6 +6,7 @@ from typing import List, Dict
 import re
 from collections import defaultdict
 import sys
+from datetime import date
 
 # producer 전송 함수
 def produce(topic, result, producer):
@@ -220,7 +221,8 @@ def crawling(date: str, away: str, home: str, dh):
     return result, game_done
 
 def main():
-    date = '20250522'
+    # today = date.today().strftime("%Y%m%d")
+    today = '20250522'
     away, home = 'HH', 'NC'
     dh = 0
     topic = '2025'
@@ -234,7 +236,7 @@ def main():
     start_time = time.time()
 
     while True:
-        new_data, game_done = crawling(date, away, home, dh)
+        new_data, game_done = crawling(today, away, home, dh)
 
         if new_data:
             produce(topic, new_data, producer)
