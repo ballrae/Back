@@ -2,9 +2,10 @@ import time
 import json
 import requests
 from kafka import KafkaProducer
-from typing import List, Dict, Set
+from typing import List, Dict
 import re
 from collections import defaultdict
+import sys
 
 # producer 전송 함수
 def produce(topic, result, producer):
@@ -49,7 +50,7 @@ def split_half_inning_relays(relays: List[Dict], inning: int):
     return top, bottom, game_over_trigger
 
 # pitch sequence와 주자 결과 등 텍스트를 처리하는 함수
-def process_pitch_and_events(options: List[Dict]) -> (List[Dict], str):
+def process_pitch_and_events(options: List[Dict]):
     pitch_sequence = []
     result_parts = []
     pitch_num = 0
@@ -180,9 +181,9 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
     return at_bats
 
 # 크롤링 함수
-def crawling(date: str, away: str, home: str, dh) -> Dict:
+def crawling(date: str, away: str, home: str, dh):
     result = {}
-    game_over = False
+    result['game_over'] = False
 
     for inning in range(1, 12):
         year = date[:4]
@@ -208,13 +209,15 @@ def crawling(date: str, away: str, home: str, dh) -> Dict:
                     "at_bats": extract_at_bats(bot, inning, "bottom")
                 }
 
-            if game_done:
-                result["game_over"] = True
-                break
+            result['game_over'] = game_done
 
+            if game_done:
+                return result, game_done
+            
         except Exception as e:
             print(f"{inning}회 요청 오류: {e}")
-    return result
+
+    return result, game_done
 
 def main():
     date = '20250522'
@@ -231,12 +234,16 @@ def main():
     start_time = time.time()
 
     while True:
-        new_data = crawling(date, away, home, dh)
+        new_data, game_done = crawling(date, away, home, dh)
 
         if new_data:
             produce(topic, new_data, producer)
         else:
             print("⏳ 새 데이터 없음")
+
+        if game_done:     
+            print("경기 종료됨. 프로그램 종료.")
+            sys.exit(0)  # 프로세스 종료
 
         time.sleep(10)
         if time.time() - start_time >= 4 * 60 * 60:     # 우선 5시간으로 자동화 -> 경기 종료 시그널 들어오면 경기 종료되도록 수정할것

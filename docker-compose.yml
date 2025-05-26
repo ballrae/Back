@@ -42,6 +42,7 @@ services:
       KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_LOG4J_LOGLEVEL: INFO
     depends_on:
       - zookeeper
     volumes:
@@ -56,9 +57,8 @@ services:
     depends_on:
       - db
       - kafka
-    environment:
-      - POSTGRES_DB=...
-      - POSTGRES_HOST=db
+    env_file:
+      - .env
   
   kafka-producer:
     container_name: ballrae-kafka-producer
