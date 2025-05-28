@@ -51,8 +51,6 @@ services:
   kafka-consumer:
     container_name: ballrae-kafka-consumer
     build: .
-    volumes:
-      - .:/app
     command: python consumer.py
     depends_on:
       - db
@@ -63,8 +61,6 @@ services:
   kafka-producer:
     container_name: ballrae-kafka-producer
     build: .
-    volumes:
-      - .:/app
     command: python producer.py
     depends_on:
       - kafka
