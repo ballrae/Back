@@ -7,6 +7,6 @@ typing_extensions==4.13.0
 kafka-python==2.2.2
 python-dotenv==1.0.1
 
-
+numpy
 requests
 djangorestframework-simplejwt
