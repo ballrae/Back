@@ -13,3 +13,25 @@ class Post(models.Model):
 
     def __str__(self):
         return self.post_title
+    
+
+class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment_content = models.TextField()
+    comment_created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.user_nickname}: {self.comment_content[:20]}"
+    
+
+class PostLike(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='likes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    liked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('post', 'user')  # 중복 방지
+
+    def __str__(self):
+        return f"{self.user.user_nickname} likes Post #{self.post.id}"
