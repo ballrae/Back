@@ -269,8 +269,8 @@ def main():
     topic = '2025'
 
     producer = KafkaProducer(
-        # bootstrap_servers='kafka:9092',
-        bootstrap_servers='localhost:9092',
+        bootstrap_servers='kafka:9092',
+        # bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
 
