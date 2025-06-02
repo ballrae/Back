@@ -262,8 +262,9 @@ def crawling(date: str, away: str, home: str, dh):
     return result, game_done
 
 def main():
-    # today = date.today().strftime("%Y%m%d")
-    today = '20250522'
+    today = date.today().strftime("%Y%m%d")
+    print(today)
+    # today = '20250601'
     away, home = 'HH', 'NC'
     dh = 0
     topic = '2025'
