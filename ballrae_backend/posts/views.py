@@ -26,10 +26,15 @@ class PostCreateView(APIView):
     def post(self, request):
         serializer = PostCreateSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save(user=request.user)  # 현재 로그인한 유저 할당
-            return Response({'status': 'OK', 'message': '작성 완료'}, status=status.HTTP_201_CREATED)
+            post = serializer.save(user=request.user)
+            return Response({
+                'status': 'OK',
+                'message': '작성 완료',
+                'data': {
+                    'postId': post.id  # ✅ 여기 추가
+                }
+            }, status=status.HTTP_201_CREATED)
         return Response({'status': 'error', 'message': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-    
 
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
