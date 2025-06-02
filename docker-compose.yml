@@ -14,6 +14,7 @@ services:
   web:
     build: .
     container_name: ballrae-backend
+    working_dir: /app
     command: python manage.py runserver 0.0.0.0:8000
     env_file:
       - .env
@@ -57,6 +58,8 @@ services:
       - kafka
     env_file:
       - .env
+    # kafka가 실행안되면 broker unavailable뜨니까~
+    restart: on-failure
   
   kafka-producer:
     container_name: ballrae-kafka-producer
@@ -64,6 +67,7 @@ services:
     command: python producer.py
     depends_on:
       - kafka
+    restart: on-failure
 
 volumes:
   postgres_data:

@@ -2,6 +2,7 @@ from kafka import KafkaConsumer
 import json
 import psycopg2
 import os
+from ballrae_backend.relay.services import save_at_bat_transactionally
 
 try:
     consumer = KafkaConsumer(
