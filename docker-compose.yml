@@ -52,21 +52,26 @@ services:
   kafka-consumer:
     container_name: ballrae-kafka-consumer
     build: .
-    command: python consumer.py
+    command: python -u consumer.py
     depends_on:
       - db
       - kafka
     env_file:
       - .env
+    volumes:
+      - .:/app
     # kafka가 실행안되면 broker unavailable뜨니까~
     restart: on-failure
   
   kafka-producer:
     container_name: ballrae-kafka-producer
     build: .
-    command: python producer.py
+    command: python -u producer.py
     depends_on:
+      - db
       - kafka
+    volumes:
+      - .:/app
     restart: on-failure
 
 volumes:

@@ -2,8 +2,12 @@ from kafka import KafkaConsumer
 import json
 import psycopg2
 import os
-from ballrae_backend.relay.services import save_at_bat_transactionally
+import django
 
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")  # settings 모듈 경로 맞게 수정
+django.setup()
+
+from ballrae_backend.relay.services import save_at_bat_transactionally
 try:
     consumer = KafkaConsumer(
         '2025', 
@@ -24,9 +28,9 @@ try:
         if messages:
             for tp, batch in messages.items():
                 for message in batch:
-                    print("* 받은 메시지:")
-                    print(f"key: {message.key}")
-                    print(f"value: {message.value}")
+                    # print("* 받은 메시지:")
+                    # print(f"key: {message.key}")
+                    # print(f"value: {message.value}")
 
                     if message.key == "game_over" and message.value == True:
                         print("경기 종료, DB 저장 시작")
