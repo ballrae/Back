@@ -8,6 +8,9 @@ from collections import defaultdict
 import sys
 from datetime import date
 import numpy as np
+from dotenv import load_dotenv
+import psycopg2
+import os
 
 # producer 전송 함수
 def produce(topic, result, producer):
@@ -220,20 +223,24 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
 
     return at_bats
 
-# 크롤링 함수
-def crawling(date: str, away: str, home: str, dh):
+# # 크롤링 함수
+def crawling(game):
     result = {}
-    result['game_over'] = False
+    game_done = False
+    # result['game_over'] = game_done
+
+    away = game[8:10]
+    home = game[10:12]
 
     for inning in range(1, 12):
-        year = date[:4]
-        url = f"https://api-gw.sports.naver.com/schedule/games/{date}{away}{home}{dh}{year}/relay?inning={inning}"
+        url = f"https://api-gw.sports.naver.com/schedule/games/{game}/relay?inning={inning}"
         headers = {"User-Agent": "Mozilla/5.0", "Referer": url}
         try:
             res = requests.get(url, headers=headers)
             data = res.json()
             relays = data["result"]["textRelayData"]["textRelays"]
             top, bot, game_done = split_half_inning_relays(relays, inning)
+            result = {}
 
             if top:
                 key = f"{inning}회초"
@@ -241,6 +248,7 @@ def crawling(date: str, away: str, home: str, dh):
                     "inning": inning, "half": "top", "team": away,
                     "at_bats": extract_at_bats(top, inning, "top")
                 }
+                print(result, flush=True)
 
             if bot:
                 key = f"{inning}회말"
@@ -248,25 +256,42 @@ def crawling(date: str, away: str, home: str, dh):
                     "inning": inning, "half": "bottom", "team": home,
                     "at_bats": extract_at_bats(bot, inning, "bottom")
                 }
+                print(result, flush=True)
 
             result['game_over'] = game_done
+
             
             if game_done:
                 return result, game_done
             
         except Exception as e:
-            print(f"{inning}회 요청 오류: {e}")
+            return result, game_done
+            # print(f"{inning}회 요청 오류: {e}")
 
-        print(result)
+        # print(result)
 
     return result, game_done
 
+def get_game_date(today):
+    load_dotenv()
+
+    conn = psycopg2.connect(
+        dbname=os.getenv("POSTGRES_DB"),
+        user=os.getenv("POSTGRES_USER"),
+        password=os.getenv("POSTGRES_PASSWORD"),
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT") 
+    )
+    cur = conn.cursor()
+
+    cur.execute("SELECT id FROM relay_game WHERE date = %s;", (today, ))
+    result = cur.fetchall()
+
+    return result[0]
+
 def main():
-    today = date.today().strftime("%Y%m%d")
-    print(today)
-    # today = '20250601'
-    away, home = 'HH', 'NC'
-    dh = 0
+    today = date.today().strftime("%Y-%m-%d")
+    today_games = get_game_date(today)
     topic = '2025'
 
     producer = KafkaProducer(
@@ -278,21 +303,22 @@ def main():
     print("- 실시간 크롤링 시작 (10초 간격)")
     start_time = time.time()
 
-    while True:
-        new_data, game_done = crawling(today, away, home, dh)
+    for game in today_games:
+        while True:
+            new_data, game_done = crawling(game)
 
-        if new_data:
-            produce(topic, new_data, producer)
-        else:
-            print("- 새 데이터 없음")
+            if new_data:
+                produce(topic, new_data, producer)
+            else:
+                print("- 새 데이터 없음")
 
-        if game_done:     
-            print("경기 종료됨. 프로그램 종료.")
-            sys.exit(0)  # 프로세스 종료
+            if game_done:     
+                print("경기 종료됨. 프로그램 종료.")
+                sys.exit(0)  # 프로세스 종료
 
-        time.sleep(10)
-        if time.time() - start_time >= 4 * 60 * 60:     # 우선 5시간으로 자동화 -> 경기 종료 시그널 들어오면 경기 종료되도록 수정할것
-            break
+            time.sleep(10)
+            if time.time() - start_time >= 4 * 60 * 60:     # 우선 5시간으로 자동화 -> 경기 종료 시그널 들어오면 경기 종료되도록 수정할것
+                break
 
 if __name__ == "__main__":
     main()
