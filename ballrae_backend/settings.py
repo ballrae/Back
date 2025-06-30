@@ -148,3 +148,10 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+KAFKA_CONFIG = {
+    'bootstrap_servers': 'kafka:9092',  # Kafka 서버 주소
+    'group_id': 'relay_api',  # Consumer Group 설정
+    'topic': '2025',  # 소비할 토픽
+}

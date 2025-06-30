@@ -8,22 +8,21 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")  # s
 django.setup()
 
 from ballrae_backend.relay.services import save_at_bat_transactionally
+
+
 try:
     consumer = KafkaConsumer(
         '2025', 
         bootstrap_servers='kafka:9092',
         auto_offset_reset='earliest',
         enable_auto_commit=True,
-        group_id='new-group',
+        # group_id='new-group',
         value_deserializer=lambda x: json.loads(x.decode('utf-8')),
         key_deserializer=lambda k: k.decode('utf-8') if k else None
     )
 
-
     while True:
-        # producer가 10초 간격이니까 10초랑 동일하게 하면 지연 문제가 있을 수 있어서, 5~7초 사이가 적절하다고 판단
-        # 일단 7초로 진행하되 서비스 진행하다가 문제 있을 것 같으면 5초로 진행
-        messages = consumer.poll(timeout_ms=7000)  # 7초 동안 메시지 기다림
+        messages = consumer.poll(timeout_ms=10000)  # 20초 동안 메시지 기다림
 
         if messages:
             for tp, batch in messages.items():
@@ -39,34 +38,72 @@ try:
 
                         print("✅ DB NAME:", os.getenv("POSTGRES_DB"))
 
+                        # conn = psycopg2.connect(
+                        #     dbname=os.getenv("POSTGRES_DB"),
+                        #     user=os.getenv("POSTGRES_USER"),
+                        #     password=os.getenv("POSTGRES_PASSWORD"),
+                        #     host=os.getenv("DB_HOST"),
+                        #     port=os.getenv("DB_PORT") 
+                        # )
 
-                        conn = psycopg2.connect(
-                            dbname=os.getenv("POSTGRES_DB"),
-                            user=os.getenv("POSTGRES_USER"),
-                            password=os.getenv("POSTGRES_PASSWORD"),
-                            host=os.getenv("DB_HOST"),
-                            port=os.getenv("DB_PORT") 
-                        )
+                        # cur = conn.cursor()  # 커서 생성
 
-                        cur = conn.cursor()  # 커서 생성
+                                        # 직전 메시지 중 relay_data를 찾자
+                        for m in batch:
+                            if isinstance(m.value, dict):
+                                relay_data = m.value
+                                game_id = relay_data.get('game_id', 2025)  # 예시: 기본값 2025
 
-                        print("연결이 완료되었습니다.")
+                                game_id = "20250615LGHH02025"
 
-                        # # 테이블 생성
-                        # cur.execute("CREATE TABLE test (id serial PRIMARY KEY, num integer, data varchar);")
+                                for atbat in relay_data.get("at_bats", []):
+                                    # pitch_sequence가 없거나 None이면 skip
+                                    if not atbat.get("pitch_sequence"):
+                                        continue
 
-                        # # 데이터 삽입
-                        # cur.execute("INSERT INTO test (num, data) VALUES (%s, %s)", (100, "abc'def"))
+                                    game_dict = {
+                                        "id": game_id,
+                                        "home_team": relay_data.get("home_team", "HH"),
+                                        "away_team": relay_data.get("away_team", "LG"),
+                                        "date": game_id[:8],
+                                        "score": "5:10"
+                                    }
 
-                        # cur.execute("SELECT * FROM test;")  # 쿼리 실행
-                        # print(cur.fetchone())
+                                    inning_dict = {
+                                        "inning_number": atbat["inning"],
+                                        "half": atbat["half"],
+                                    }
 
-                        # # 커밋 및 연결 종료
-                        # conn.commit()
-                        # cur.close()
+                                    player_dict = {
+                                        "player_name": atbat["actual_batter"],
+                                        "team_id": relay_data.get("team_id", "LG"),  # 예시
+                                    }
 
-                        conn.close()
-                        break
+                                    atbat_dict = {
+                                        "bat_order": atbat["bat_order"],
+                                        "result": atbat["result"],
+                                        "appearance_num": atbat.get("appearance_number", 1),
+                                    }
+
+                                    pitch_list = []
+                                    for pitch in atbat["pitch_sequence"]:
+                                        pitch_list.append({
+                                            "pitch_num": pitch.get("pitch_num"),
+                                            "pitch_type": pitch.get("pitch_type"),
+                                            "speed": float(pitch["speed"]) if pitch.get("speed") else None,
+                                            "count": pitch.get("count"),
+                                            "pitch_result": pitch.get("pitch_result"),
+                                        })
+
+                                    save_at_bat_transactionally({
+                                        "game": game_dict,
+                                        "inning": inning_dict,
+                                        "player": player_dict,
+                                        "atbat": atbat_dict,
+                                        "pitches": pitch_list,
+                                    })
+
+                        break  # 저장 후 종료
 
 
         else:
