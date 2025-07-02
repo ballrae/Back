@@ -44,4 +44,6 @@ class Pitch(models.Model):
     pitch_type = models.CharField(max_length=50, null=True)
     speed = models.FloatField(null=True)
     count = models.CharField(max_length=10, null=True)
-    pitch_result = models.CharField(max_length=50, null=True)
+    pitch_coordinate = models.JSONField(null=True) 
+    pitch_result = models.CharField(max_length=200, null=True)
+    event = models.CharField(max_length=200, null=True)

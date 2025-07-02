@@ -12,3 +12,4 @@ requests
 djangorestframework-simplejwt
 apache-airflow
 holidayskr
+adrf

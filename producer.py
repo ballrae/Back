@@ -275,6 +275,8 @@ def crawling(game):
     away = game[8:10]
     home = game[10:12]
 
+    result['game_id'] = game
+
     for inning in range(1, 12):
         url = f"https://api-gw.sports.naver.com/schedule/games/{game}/relay?inning={inning}"
         headers = {"User-Agent": "Mozilla/5.0", "Referer": url}

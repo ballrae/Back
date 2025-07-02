@@ -132,19 +132,19 @@ try:
                         try:
                             if entry["status"] == "done":
                                 cur.execute("""
-                                    INSERT INTO relay_game (id, status, dh, score, date, home_team, away_team)
+                                    INSERT INTO games_game (id, status, dh, score, date, home_team, away_team)
                                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                                 """, (game_id, "done", dh, entry["score"], time, home, away))
 
                             elif entry["status"] == "cancelled":
                                 cur.execute("""
-                                    INSERT INTO relay_game (id, status, dh, date, home_team, away_team)
+                                    INSERT INTO games_game (id, status, dh, date, home_team, away_team)
                                     VALUES (%s, %s, %s, %s, %s, %s)
                                 """, (game_id, "cancelled", dh, time, home, away))
 
                             elif entry["status"] == "scheduled":
                                 cur.execute("""
-                                    INSERT INTO relay_game (id, status, dh, date, home_team, away_team)
+                                    INSERT INTO games_game (id, status, dh, date, home_team, away_team)
                                     VALUES (%s, %s, %s, %s, %s, %s)
                                 """, (game_id, "scheduled", dh, time, home, away))
 

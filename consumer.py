@@ -3,20 +3,20 @@ import json
 import psycopg2
 import os
 import django
+import time
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")  # settings 모듈 경로 맞게 수정
-django.setup()
+# os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")  # settings 모듈 경로 맞게 수정
+# django.setup()
 
-from ballrae_backend.relay.services import save_at_bat_transactionally
-
+# from ballrae_backend.games.services import save_at_bat_transactionally
 
 try:
     consumer = KafkaConsumer(
         '2025', 
         bootstrap_servers='kafka:9092',
-        auto_offset_reset='earliest',
+        auto_offset_reset='latest',
         enable_auto_commit=True,
-        # group_id='new-group',
+        group_id='db-save-group',
         value_deserializer=lambda x: json.loads(x.decode('utf-8')),
         key_deserializer=lambda k: k.decode('utf-8') if k else None
     )
@@ -27,13 +27,12 @@ try:
         if messages:
             for tp, batch in messages.items():
                 for message in batch:
-                    # print("* 받은 메시지:")
-                    # print(f"key: {message.key}")
-                    # print(f"value: {message.value}")
+                    print("* 받은 메시지:")
+                    print(f"key: {message.key}")
+                    print(f"value: {message.value}")
 
                     if message.key == "game_over" and message.value == True:
                         print("경기 종료, DB 저장 시작")
-                        # 여기에 DB 저장 로직
                         # DB 저장 시작
 
                         print("✅ DB NAME:", os.getenv("POSTGRES_DB"))
@@ -48,13 +47,13 @@ try:
 
                         # cur = conn.cursor()  # 커서 생성
 
-                                        # 직전 메시지 중 relay_data를 찾자
+                        # 직전 메시지 중 relay_data를 찾기
                         for m in batch:
                             if isinstance(m.value, dict):
                                 relay_data = m.value
                                 game_id = relay_data.get('game_id', 2025)  # 예시: 기본값 2025
 
-                                game_id = "20250615LGHH02025"
+                                game_id = "20250628SSWO02025"
 
                                 for atbat in relay_data.get("at_bats", []):
                                     # pitch_sequence가 없거나 None이면 skip
@@ -95,13 +94,13 @@ try:
                                             "pitch_result": pitch.get("pitch_result"),
                                         })
 
-                                    save_at_bat_transactionally({
-                                        "game": game_dict,
-                                        "inning": inning_dict,
-                                        "player": player_dict,
-                                        "atbat": atbat_dict,
-                                        "pitches": pitch_list,
-                                    })
+                                    # save_at_bat_transactionally({
+                                    #     "game": game_dict,
+                                    #     "inning": inning_dict,
+                                    #     "player": player_dict,
+                                    #     "atbat": atbat_dict,
+                                    #     "pitches": pitch_list,
+                                    # })
 
                         break  # 저장 후 종료
 
