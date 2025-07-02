@@ -6,20 +6,47 @@ from typing import List, Dict
 import re
 from collections import defaultdict
 import sys
-from datetime import date
 import numpy as np
-from dotenv import load_dotenv
-import psycopg2
-import os
+import argparse
+
+# 이전 데이터 저장용 변수
+previous_data = None
+
+# 엔트리 저장 변수
+home_entry = None
+away_entry = None
+home_lineup = None
+away_lineup = None
 
 # producer 전송 함수
 def produce(topic, result, producer):
-    for key, value in result.items():
-        # print(f"전송 데이터: key = {key}, value = {value}")
-        producer.send(topic, key=str(key).encode('utf-8'), value=value)
+    global previous_data
 
-    producer.flush()
-    print(f"✅ Kafka에 {len(result)}개의 메시지를 전송했습니다.")
+    # 만약 첫 번째 데이터라면, 그 데이터를 전송하고 저장
+    if previous_data is None:
+        previous_data = result
+        producer.send(topic, key=str("initial").encode('utf-8'), value=result)
+        producer.flush()
+        print(f"✅ 최초 데이터 전송: {result}")
+        return
+
+    # 변경된 부분만 추출하는 로직
+    changed_data = {}
+    for key, value in result.items():
+        # 이전 데이터와 비교하여 값이 다르면 변경된 데이터로 간주
+        if key not in previous_data or previous_data[key] != value:
+            changed_data[key] = value
+
+    # 변경된 부분만 있을 경우에만 전송
+    if changed_data:
+        print(f"✅ 변경된 데이터 전송: {changed_data}")
+        producer.send(topic, key=str("update").encode('utf-8'), value=changed_data)
+        producer.flush()
+
+        # 이전 데이터를 업데이트
+        previous_data = result
+    else:
+        print("- 변경된 데이터 없음")
 
 # pitch result -> 이니셜을 문자 형태로 변환
 def convert_pitch_result(pitch_result: str):
@@ -55,8 +82,10 @@ def split_half_inning_relays(relays: List[Dict], inning: int):
 
         if f"{inning}회말" in title:
             current = "bottom"
+            continue
         elif f"{inning}회초" in title:
             current = "top"
+            continue
 
         if current == "top":
             top.append(r)
@@ -73,9 +102,11 @@ def process_pitch_and_events(relay):
     ball, strike = 0, 0
     strike_zone = None
 
-
     options = relay.get("textOptions", [])
     pitch_options = relay.get('ptsOptions')
+
+    temp_pitch_sequence = {}
+    event = []
 
     for opt in options:
         text = opt.get("text", "")
@@ -100,42 +131,39 @@ def process_pitch_and_events(relay):
                 strike_zone_bottom = pitch_pts['bottomSz']
                 temp_strike_zone = [strike_zone_top, strike_zone_bottom, strike_zone_right, strike_zone_left]
         
-        if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]):
+        if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
             pitch_num += 1
-            pitch_sequence.append({
-                "pitch_num": pitch_num,
-                "pitch_type": opt.get("stuff"),
-                "pitch_coordinate": points,
-                "speed": opt.get("speed"),
-                "count": f"{ball}-{strike}",
-                "pitch_result": text.replace(f"{pitch_num}구 ", ""),
-                "event": None
-            })
-        elif "투수판 이탈" in text:
-            pitch_sequence.append({
-                "pitch_num": pitch_num,
-                "pitch_type": None,
-                "pitch_coordinate": None,
-                "speed": None,
-                "count": None,
-                "pitch_result": None,
-                "event": text
-            })
-        elif "체크 스윙" in text:
-            pitch_sequence.append({
-                "pitch_num": pitch_num,
-                "pitch_type": None,
-                "pitch_coordinate": None,
-                "speed": None,
-                "count": None,
-                "pitch_result": None,
-                "event": text
-            })
+            temp_pitch_sequence["pitch_num"] = pitch_num
+            temp_pitch_sequence['pitch_type'] = opt.get('stuff')
+            temp_pitch_sequence['pitch_coordinate'] = points
+            temp_pitch_sequence['speed'] = opt.get('speed')
+            temp_pitch_sequence['count'] = f"{ball}-{strike}"
+            temp_pitch_sequence['pitch_result'] = text.replace(f"{pitch_num}구 ", "")
+            if event:
+                temp_pitch_sequence['event'] = "|".join(event)
+            else:
+                temp_pitch_sequence['event'] = None  # 기본값은 None으로 설정
+
+            pitch_sequence.append(temp_pitch_sequence)
+
+            temp_pitch_sequence = {}
+            event = []
+
+        elif any(keyword in text for keyword in ["투수판 이탈", "체크 스윙", "도루", "비디오 판독", "교체"]):
+            event.append(text)
+            continue
+
         elif ":" in text and "타자" not in text:
             result_parts.append(text)
 
         if temp_strike_zone is not None and strike_zone is None:
             strike_zone = temp_strike_zone
+        
+    if event!=[]:
+        pitch_sequence.append({
+            "pitch_num": pitch_num+1,
+            "event": event
+        })
 
     return pitch_sequence, "|".join(result_parts), strike_zone
 
@@ -223,14 +251,31 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
 
     return at_bats
 
-# # 크롤링 함수
+
+# pcode를 통해 name을 찾는 함수
+def find_name_by_pcode(entry, pcode):
+    # 배터 리스트와 투수 리스트에서 pcode를 찾기
+    for group in [entry['batter'], entry['pitcher']]:
+        for player in group:
+            if player['pcode'] == str(pcode):
+                return player['name']
+    return "선수 정보 없음"
+
+# 크롤링 함수
 def crawling(game):
+    global home_entry
+    global away_entry
+    global home_lineup
+    global away_lineup
+
     result = {}
     game_done = False
     # result['game_over'] = game_done
 
     away = game[8:10]
     home = game[10:12]
+
+    result['game_id'] = game
 
     for inning in range(1, 12):
         url = f"https://api-gw.sports.naver.com/schedule/games/{game}/relay?inning={inning}"
@@ -240,7 +285,12 @@ def crawling(game):
             data = res.json()
             relays = data["result"]["textRelayData"]["textRelays"]
             top, bot, game_done = split_half_inning_relays(relays, inning)
-            result = {}
+
+            if inning==1:
+                home_entry = data["result"]["textRelayData"]['homeEntry']
+                away_entry = data["result"]["textRelayData"]['awayEntry']
+                home_lineup = data["result"]["textRelayData"]['homeLineup']
+                away_lineup = data["result"]["textRelayData"]['awayLineup']
 
             if top:
                 key = f"{inning}회초"
@@ -248,7 +298,7 @@ def crawling(game):
                     "inning": inning, "half": "top", "team": away,
                     "at_bats": extract_at_bats(top, inning, "top")
                 }
-                print(result, flush=True)
+                # print(result, flush=True)
 
             if bot:
                 key = f"{inning}회말"
@@ -256,7 +306,7 @@ def crawling(game):
                     "inning": inning, "half": "bottom", "team": home,
                     "at_bats": extract_at_bats(bot, inning, "bottom")
                 }
-                print(result, flush=True)
+                # print(result, flush=True)
 
             result['game_over'] = game_done
 
@@ -265,33 +315,20 @@ def crawling(game):
                 return result, game_done
             
         except Exception as e:
+            print(f"{inning}회 요청 오류: {e}")
             return result, game_done
-            # print(f"{inning}회 요청 오류: {e}")
 
         # print(result)
 
     return result, game_done
 
-def get_game_date(today):
-    load_dotenv()
-
-    conn = psycopg2.connect(
-        dbname=os.getenv("POSTGRES_DB"),
-        user=os.getenv("POSTGRES_USER"),
-        password=os.getenv("POSTGRES_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT") 
-    )
-    cur = conn.cursor()
-
-    cur.execute("SELECT id FROM relay_game WHERE date = %s;", (today, ))
-    result = cur.fetchall()
-
-    return result[0]
-
 def main():
-    today = date.today().strftime("%Y-%m-%d")
-    today_games = get_game_date(today)
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--id')
+    # args = parser.parse_args()
+
+    game = "20250629SSWO02025"
+
     topic = '2025'
 
     producer = KafkaProducer(
@@ -301,24 +338,20 @@ def main():
     )
 
     print("- 실시간 크롤링 시작 (10초 간격)")
-    start_time = time.time()
 
-    for game in today_games:
-        while True:
-            new_data, game_done = crawling(game)
+    while True:
+        new_data, game_done = crawling(game)
 
-            if new_data:
-                produce(topic, new_data, producer)
-            else:
-                print("- 새 데이터 없음")
+        if new_data:
+            produce(topic, new_data, producer)
+        else:
+            print("- 새 데이터 없음")
 
-            if game_done:     
-                print("경기 종료됨. 프로그램 종료.")
-                sys.exit(0)  # 프로세스 종료
+        if game_done:     
+            print("경기 종료됨. 프로그램 종료.")
+            sys.exit(0)  # 프로세스 종료
 
-            time.sleep(10)
-            if time.time() - start_time >= 4 * 60 * 60:     # 우선 5시간으로 자동화 -> 경기 종료 시그널 들어오면 경기 종료되도록 수정할것
-                break
+        time.sleep(20)
 
 if __name__ == "__main__":
     main()

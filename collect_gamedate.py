@@ -5,6 +5,44 @@ import os
 from dotenv import load_dotenv
 from collections import defaultdict
 from psycopg2.errors import UniqueViolation
+import datetime
+from datetime import datetime
+from holidayskr import is_holiday
+
+def set_game_time(date):
+    # time 객체에 날짜 설정
+    time = date
+
+    # 월, 요일, 시간 추출
+    month = time.month
+    weekday = time.weekday()  # 0: 월요일, 1: 화요일, ..., 6: 일요일
+
+    # 날짜를 문자열 형식으로 변환 (YYYY-MM-DD)
+    holiday_str = time.strftime("%Y-%m-%d")
+
+    # 공휴일 여부 확인 (is_holiday 함수 사용)
+    holiday = is_holiday(holiday_str)
+
+    # 기본 시간 설정 (기본적으로 18:30)
+    time = time.replace(hour=18, minute=30)
+
+    # 조건에 맞는 시간 설정
+    if weekday == 5:  # 토요일
+        if month == 7 or month == 8:
+            time = time.replace(hour=18, minute=0)  # 17:00
+        else: time = time.replace(hour=17, minute=0)
+
+    elif weekday == 6 or holiday:  # 일요일
+        if month == 6:  # 6월
+            time = time.replace(hour=17, minute=0)  # 17:00
+        elif month == 7 or month == 8:
+            time = time.replace(hour=18, minute=0)
+        else: time = time.replace(hour=14, minute=0)  # 14:00 (일요일)
+
+    else:
+        time = time.replace(hour=18, minute=30)  # 기본 18:30
+    
+    return time
 
 # 설정
 load_dotenv()
@@ -30,86 +68,94 @@ field_map = {
     "대구": "DG", "광주": "GJ"
     }
 
-# 월 단위 크롤링
-for i in range(3, 11):
-    url = f"https://www.koreabaseball.com/ws/Schedule.asmx/GetMonthSchedule?leId=1&srIdList=0,1,3,4,5,7,9,6&seasonId=2025&gameMonth={str(i).zfill(2)}"
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.koreabaseball.com/ws/Schedule.asmx/"
-    }
+try:
+    # 월 단위 크롤링
+    for i in range(3, 11):
+        url = f"https://www.koreabaseball.com/ws/Schedule.asmx/GetMonthSchedule?leId=1&srIdList=0,1,3,4,5,7,9,6&seasonId=2025&gameMonth={str(i).zfill(2)}"
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://www.koreabaseball.com/ws/Schedule.asmx/"
+        }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
+        response = requests.get(url, headers=headers)
+        data = response.json()
 
-    for j in range(5):
-        for k in range(7):
-            temp = data['rows'][j]['row'][k]
-            text = temp['Text']
-            day_match = re.search(r'<li class="dayNum">(\d+)</li>', text)
-            if not day_match:
-                continue
+        for j in range(5):
+            for k in range(7):
+                temp = data['rows'][j]['row'][k]
+                text = temp['Text']
+                day_match = re.search(r'<li class="dayNum">(\d+)</li>', text)
+                if not day_match:
+                    continue
 
-            day = int(day_match.group(1))
-            date = f"2025{i:02d}{day:02d}"
+                day = int(day_match.group(1))
+                date = f"2025{i:02d}{day:02d}"
 
-            # 경기 그룹 저장 (key: (home, away))
-            game_entries = defaultdict(list)
+                time = datetime.strptime(date, "%Y%m%d")
+                
+                time = set_game_time(time)
 
-            # 종료된 경기
-            if temp['Class'] == 'endGame':
-                matches = re.findall(r"<li>(\S+)\s*<b>(\d+)\s*:\s*(\d+)</b>\s*(\S+)", text)
-                for away, s1, s2, home in matches:
-                    away, home = team_map[away], team_map[home]
-                    game_entries[(home, away)].append({
-                        "status": "done",
-                        "score": f"{s1}:{s2}"
-                    })
+                # 경기 그룹 저장 (key: (home, away))
+                game_entries = defaultdict(list)
 
-                cancels = re.findall(r"<li class='rainCancel'>(\S+)\s*:\s*(\S+)\s*\[(.*?)\]</li>", text)
-                for away, home, _ in cancels:
-                    away, home = team_map[away], team_map[home]
-                    game_entries[(home, away)].append({
-                        "status": "cancelled"
-                    })
+                # 종료된 경기
+                if temp['Class'] == 'endGame':
+                    matches = re.findall(r"<li>(\S+)\s*<b>(\d+)\s*:\s*(\d+)</b>\s*(\S+)", text)
+                    for away, s1, s2, home in matches:
+                        away, home = team_map[away], team_map[home]
+                        game_entries[(home, away)].append({
+                            "status": "done",
+                            "score": f"{s1}:{s2}"
+                        })
 
-            # 예정된 경기
-            else:
-                matches = re.findall(r"<li>(\S+)\s*:\s*(\S+)\s*\[(.*?)\]</li>", text)
-                for away, home, _ in matches:
-                    away, home = team_map[away], team_map[home]
-                    game_entries[(home, away)].append({
-                        "status": "scheduled"
-                    })
+                    cancels = re.findall(r"<li class='rainCancel'>(\S+)\s*:\s*(\S+)\s*\[(.*?)\]</li>", text)
+                    for away, home, _ in cancels:
+                        away, home = team_map[away], team_map[home]
+                        game_entries[(home, away)].append({
+                            "status": "cancelled"
+                        })
 
-            # DB 저장
-            for (home, away), entries in game_entries.items():
-                for idx, entry in enumerate(entries):
-                    dh = idx + 1 if len(entries) > 1 else 0
-                    game_id = f"{date}{away}{home}{dh}2025"
-                    try:
-                        if entry["status"] == "done":
-                            cur.execute("""
-                                INSERT INTO relay_game (id, status, dh, score, date, home_team, away_team)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """, (game_id, "done", dh, entry["score"], date, home, away))
+                # 예정된 경기
+                else:
+                    matches = re.findall(r"<li>(\S+)\s*:\s*(\S+)\s*\[(.*?)\]</li>", text)
+                    for away, home, _ in matches:
+                        away, home = team_map[away], team_map[home]
+                        game_entries[(home, away)].append({
+                            "status": "scheduled"
+                        })
 
-                        elif entry["status"] == "cancelled":
-                            cur.execute("""
-                                INSERT INTO relay_game (id, status, dh, date, home_team, away_team)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (game_id, "cancelled", dh, date, home, away))
+                # DB 저장
+                for (home, away), entries in game_entries.items():
+                    for idx, entry in enumerate(entries):
+                        dh = idx + 1 if len(entries) > 1 else 0
+                        game_id = f"{date}{away}{home}{dh}2025"
+                        try:
+                            if entry["status"] == "done":
+                                cur.execute("""
+                                    INSERT INTO games_game (id, status, dh, score, date, home_team, away_team)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                """, (game_id, "done", dh, entry["score"], time, home, away))
 
-                        elif entry["status"] == "scheduled":
-                            cur.execute("""
-                                INSERT INTO relay_game (id, status, dh, date, home_team, away_team)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (game_id, "scheduled", dh, date, home, away))
+                            elif entry["status"] == "cancelled":
+                                cur.execute("""
+                                    INSERT INTO games_game (id, status, dh, date, home_team, away_team)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """, (game_id, "cancelled", dh, time, home, away))
 
-                    except UniqueViolation:
-                        conn.rollback()
-                        print(f"중복으로 무시됨: {game_id}")
+                            elif entry["status"] == "scheduled":
+                                cur.execute("""
+                                    INSERT INTO games_game (id, status, dh, date, home_team, away_team)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                """, (game_id, "scheduled", dh, time, home, away))
 
-    conn.commit()
+                        except UniqueViolation:
+                            conn.rollback()
+                            print(f"중복으로 무시됨: {game_id}")
+        conn.commit()
 
-cur.close()
-conn.close()
+    cur.close()
+    conn.close()
+                    
+except Exception as e:
+    print(e)
+
