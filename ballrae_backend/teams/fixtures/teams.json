@@ -10,7 +10,7 @@
   },
   {
     "model": "teams.team",
-    "pk": "OB",
+    "pk": "DS",
     "fields": {
       "team_name": "두산 베어스",
       "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_OB.png",
@@ -37,7 +37,7 @@
   },
   {
     "model": "teams.team",
-    "pk": "HT",
+    "pk": "KA",
     "fields": {
       "team_name": "KIA 타이거즈",
       "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_HT.png",
@@ -64,7 +64,7 @@
   },
   {
     "model": "teams.team",
-    "pk": "WO",
+    "pk": "HE",
     "fields": {
       "team_name": "키움 히어로즈",
       "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_WO.png",
@@ -82,7 +82,7 @@
   },
   {
     "model": "teams.team",
-    "pk": "SK",
+    "pk": "SL",
     "fields": {
       "team_name": "SSG 랜더스",
       "team_logo": "https://6ptotvmi5753.edge.naverncp.com/KBO_IMAGE/emblem/regular/fixed/emblem_SK.png",

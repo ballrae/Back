@@ -25,6 +25,14 @@ services:
     depends_on:
       - db
 
+  hate-filter-api:
+    build:
+      context: ./hate-filter-api
+    container_name: hate-filter-api
+    ports:
+      - "8001:8001"
+    restart: always
+
   zookeeper:
     image: bitnami/zookeeper:latest
     container_name: ballrae-zookeeper
