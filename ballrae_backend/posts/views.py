@@ -8,6 +8,8 @@ from .serializers import PostSerializer, PostCreateSerializer, PostDetailSeriali
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import get_object_or_404
 
+from .hate_filter import filter_text # 필터링 모델
+
 class TeamPostListView(APIView):
     def get(self, request, team_id):
         posts = Post.objects.filter(team__id=team_id).order_by('-is_pinned', '-post_created_at')
@@ -24,18 +26,31 @@ class PostCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = PostCreateSerializer(data=request.data)
+        # 제목과 내용 필드 이름을 올바르게 사용해야 함
+        original_title = request.data.get('post_title', '')
+        original_content = request.data.get('post_content', '')
+
+        # 필터링
+        filtered_title = filter_text(original_title)
+        filtered_content = filter_text(original_content)
+
+        # 교체
+        data = request.data.copy()
+        data['post_title'] = filtered_title
+        data['post_content'] = filtered_content
+
+        serializer = PostCreateSerializer(data=data)
         if serializer.is_valid():
             post = serializer.save(user=request.user)
             return Response({
                 'status': 'OK',
                 'message': '작성 완료',
                 'data': {
-                    'postId': post.id  # ✅ 여기 추가
+                    'postId': post.id
                 }
             }, status=status.HTTP_201_CREATED)
         return Response({'status': 'error', 'message': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-
+    
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
 class PostDetailView(APIView):
@@ -75,10 +90,17 @@ class CommentListCreateView(APIView):
 
     def post(self, request, team_id, post_id):
         post = get_object_or_404(Post, id=post_id, team__id=team_id)
-        serializer = CommentCreateSerializer(data=request.data)  # ✅ Create 전용 serializer 사용
+
+        original_text = request.data.get('content', '')
+        filtered_text = filter_text(original_text)
+
+        data = request.data.copy()
+        data['content'] = filtered_text
+
+        serializer = CommentCreateSerializer(data=data)
         if serializer.is_valid():
             serializer.save(user=request.user, post=post)
-            read_serializer = CommentSerializer(serializer.instance)  # ✅ 저장된 결과로 다시 serialize
+            read_serializer = CommentSerializer(serializer.instance)
             return Response({
                 'status': 'OK',
                 'message': '댓글 등록 완료',
