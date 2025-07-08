@@ -25,9 +25,12 @@ def produce(topic, result, producer):
     # 만약 첫 번째 데이터라면, 그 데이터를 전송하고 저장
     if previous_data is None:
         previous_data = result
-        producer.send(topic, key=str("initial").encode('utf-8'), value=result)
+        for key, value in result.items():
+            print(key)
+            producer.send(topic, key=str(key).encode('utf-8'), value=value)
+
         producer.flush()
-        print(f"✅ 최초 데이터 전송: {result}")
+        print(f"✅ 최초 데이터 전송")
         return
 
     # 변경된 부분만 추출하는 로직
@@ -39,12 +42,14 @@ def produce(topic, result, producer):
 
     # 변경된 부분만 있을 경우에만 전송
     if changed_data:
-        print(f"✅ 변경된 데이터 전송: {changed_data}")
-        producer.send(topic, key=str("update").encode('utf-8'), value=changed_data)
+        print(f"✅ 변경된 데이터 전송:")
+        for key, value in changed_data.items():
+            producer.send(topic, key=str(key).encode('utf-8'), value=value)
         producer.flush()
 
         # 이전 데이터를 업데이트
         previous_data = result
+
     else:
         print("- 변경된 데이터 없음")
 
@@ -54,20 +59,29 @@ def convert_pitch_result(pitch_result: str):
         "B": "볼", "T": "스트라이크", "F": "파울", "S": "헛스윙",
         "H": "타격", "W": "번트 파울"
     }
+
+    print(pitch_result)
+
     if pitch_result is None:
         return None
     return mapping.get(pitch_result, None) 
 
 # y = 0 (홈플레이트)에 도달하는 시간 t 계산
 def compute_plate_coordinates(pitch):
-    y0, vy0, ay = pitch["y0"], pitch["vy0"], pitch["ay"]
-    a = 0.5 * ay
-    b = vy0
-    c = y0
-    t = (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
-    x = pitch["x0"] + pitch["vx0"] * t + 0.5 * pitch["ax"] * t**2
-    z = pitch["z0"] + pitch["vz0"] * t + 0.5 * pitch["az"] * t**2
-    return float(x), float(z)
+    try:            
+        if pitch is not None:
+            y0, vy0, ay = pitch["y0"], pitch["vy0"], pitch["ay"]
+            a = 0.5 * ay
+            b = vy0
+            c = y0
+            t = (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
+            x = pitch["x0"] + pitch["vx0"] * t + 0.5 * pitch["ax"] * t**2
+            z = pitch["z0"] + pitch["vz0"] * t + 0.5 * pitch["az"] * t**2
+            return float(x), float(z)
+        else:
+            return None
+    except:
+        return None
 
 # 초/말 공격 나눔
 def split_half_inning_relays(relays: List[Dict], inning: int):
@@ -81,7 +95,7 @@ def split_half_inning_relays(relays: List[Dict], inning: int):
             continue  # 이 텍스트 자체는 저장 안 함
 
         if f"{inning}회말" in title:
-            current = "bottom"
+            current = "bot"
             continue
         elif f"{inning}회초" in title:
             current = "top"
@@ -112,6 +126,7 @@ def process_pitch_and_events(relay):
         text = opt.get("text", "")
         if not text:
             continue
+
         ball = opt['currentGameState']['ball']
         strike = opt['currentGameState']['strike']
 
@@ -133,6 +148,7 @@ def process_pitch_and_events(relay):
         
         if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
             pitch_num += 1
+
             temp_pitch_sequence["pitch_num"] = pitch_num
             temp_pitch_sequence['pitch_type'] = opt.get('stuff')
             temp_pitch_sequence['pitch_coordinate'] = points
@@ -168,7 +184,7 @@ def process_pitch_and_events(relay):
     return pitch_sequence, "|".join(result_parts), strike_zone
 
 # 타석 정보
-def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
+def extract_at_bats(relays: List[Dict], inning: int, half: str, entries: List) -> List[Dict]:
     at_bats = []
     pitch_merge_tracker = dict()
     appearance_counter = defaultdict(int)
@@ -184,6 +200,11 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
         pitch_sequence, result, strike_zone = process_pitch_and_events(r)
 
         for opt in options:
+            text = result or ""
+
+            pitcher = opt['currentGameState']['pitcher']
+            pitcher = find_name_by_pcode(entries, pitcher)
+            
             if "batterRecord" in opt:
                 actual_batter = opt["batterRecord"].get("name")
                 bat_order = opt["batterRecord"].get("batOrder")
@@ -202,6 +223,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
                 pending_sub = {
                     "inning": inning,
                     "half": half,
+                    "pitcher": pitcher,
                     "bat_order": bat_order,
                     "original_batter": original_batter,
                     "actual_batter": actual_batter,
@@ -227,17 +249,18 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
                 else:
                     at_bats[idx]["pitch_sequence"].extend(pitch_sequence)
                 if result:
-                    at_bats[idx]["result"] += f"|{result}"
+                    text += f"|{result}"
             else:
                 at_bats.append({
                     "inning": inning,
                     "half": half,
+                    "pitcher": None,                    
                     "bat_order": bat_order,
                     "original_batter": None,
                     "actual_batter": actual_batter,
                     "appearance_number": appearance_number,
                     "strike_zone": strike_zone,
-                    "result": result or "(진행 중)",
+                    "full_result": result or "(진행 중)",
                     "pitch_sequence": pitch_sequence
                 })
                 pitch_merge_tracker[merge_key] = len(at_bats) - 1
@@ -247,19 +270,32 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str) -> List[Dict]:
             prev_bat_order = current_at_bat_key[0]
             if bat_order == prev_bat_order:
                 idx = pitch_merge_tracker[current_at_bat_key]
-                at_bats[idx]["result"] += f"|{result}"
+                text += f"|{result}"
+
+        if text.startswith(actual_batter):
+            split_parts = text.split("|")
+            main_play = split_parts[0].split(":", 1)[1].strip()
+
+            idx = pitch_merge_tracker[current_at_bat_key]
+            at_bats[idx]["main_result"] = main_play
+
+            full_extras = split_parts[1:]  # 첫 항목 제외
+            if full_extras:
+                at_bats[idx]["full_result"] = "|".join(full_extras).strip()
 
     return at_bats
 
-
 # pcode를 통해 name을 찾는 함수
-def find_name_by_pcode(entry, pcode):
+def find_name_by_pcode(entries, pcode):
     # 배터 리스트와 투수 리스트에서 pcode를 찾기
-    for group in [entry['batter'], entry['pitcher']]:
-        for player in group:
-            if player['pcode'] == str(pcode):
-                return player['name']
-    return "선수 정보 없음"
+    for entry in entries:
+        for group in [entry['batter'], entry['pitcher']]:
+            for player in group:
+                if player['pcode'] == str(pcode):
+                    return player['name']
+                else:
+                    continue
+    return None
 
 # 크롤링 함수
 def crawling(game):
@@ -267,6 +303,7 @@ def crawling(game):
     global away_entry
     global home_lineup
     global away_lineup
+    global game_done
 
     result = {}
     game_done = False
@@ -283,42 +320,40 @@ def crawling(game):
         try:
             res = requests.get(url, headers=headers)
             data = res.json()
+            
             relays = data["result"]["textRelayData"]["textRelays"]
             top, bot, game_done = split_half_inning_relays(relays, inning)
 
-            if inning==1:
-                home_entry = data["result"]["textRelayData"]['homeEntry']
-                away_entry = data["result"]["textRelayData"]['awayEntry']
-                home_lineup = data["result"]["textRelayData"]['homeLineup']
-                away_lineup = data["result"]["textRelayData"]['awayLineup']
+            home_entry = data["result"]["textRelayData"]['homeEntry']
+            away_entry = data["result"]["textRelayData"]['awayEntry']
+            home_lineup = data["result"]["textRelayData"]['homeLineup']
+            away_lineup = data["result"]["textRelayData"]['awayLineup']
 
+            entries = [home_entry, away_entry, home_lineup, away_lineup]
+        
             if top:
                 key = f"{inning}회초"
                 result[key] = {
+                    "game_id": game,
                     "inning": inning, "half": "top", "team": away,
-                    "at_bats": extract_at_bats(top, inning, "top")
+                    "at_bats": extract_at_bats(top, inning, "top", entries)
                 }
-                # print(result, flush=True)
 
             if bot:
                 key = f"{inning}회말"
                 result[key] = {
-                    "inning": inning, "half": "bottom", "team": home,
-                    "at_bats": extract_at_bats(bot, inning, "bottom")
+                    "game_id": game,
+                    "inning": inning, "half": "bot", "team": home,
+                    "at_bats": extract_at_bats(bot, inning, "bot", entries)
                 }
-                # print(result, flush=True)
-
-            result['game_over'] = game_done
-
             
-            if game_done:
+            if game_done == True:
+                result['game_over'] = game_done
                 return result, game_done
             
         except Exception as e:
             print(f"{inning}회 요청 오류: {e}")
-            return result, game_done
-
-        # print(result)
+            continue
 
     return result, game_done
 
@@ -327,7 +362,7 @@ def main():
     # parser.add_argument('--id')
     # args = parser.parse_args()
 
-    game = "20250629SSWO02025"
+    game = "20250706HHWO02025"
 
     topic = '2025'
 
