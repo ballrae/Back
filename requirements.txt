@@ -13,3 +13,5 @@ djangorestframework-simplejwt
 apache-airflow
 holidayskr
 adrf
+daphne
+channels

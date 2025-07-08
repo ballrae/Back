@@ -155,3 +155,12 @@ KAFKA_CONFIG = {
     'group_id': 'relay_api',  # Consumer Group 설정
     'topic': '2025',  # 소비할 토픽
 }
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("localhost", 6379)],
+        },
+    }
+}

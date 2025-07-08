@@ -11,7 +11,7 @@ class Game(models.Model):
     away_team = models.CharField(max_length=5)
 
 class Inning(models.Model):
-    game = models.ForeignKey(Game, on_delete=models.CASCADE)
+    game = models.ForeignKey(Game, related_name='innings', on_delete=models.CASCADE)
     inning_number = models.IntegerField()
     half = models.CharField(max_length=5, null=True)  # top / bot
 
@@ -31,15 +31,17 @@ class PlayerTeamHistory(models.Model):
     move_index = models.IntegerField(default=0)
 
 class AtBat(models.Model):
-    inning = models.ForeignKey(Inning, on_delete=models.CASCADE)
+    inning = models.ForeignKey(Inning, related_name='atbats', on_delete=models.CASCADE)
+    pitcher = models.CharField(max_length=5, null=True)
     bat_order = models.IntegerField(null=True)
-    result = models.CharField(max_length=255, null=True)
-    original_player = models.ForeignKey(Player, on_delete=models.SET_NULL, null=True, related_name='original_atbats')
-    actual_player = models.ForeignKey(Player, on_delete=models.CASCADE, related_name='actual_atbats')
+    full_result = models.CharField(max_length=255, null=True)
+    original_player = models.CharField(max_length=20, null=True)
+    actual_player = models.CharField(max_length=20, null=False, default='타자')
     appearance_num = models.IntegerField(default=1)
+    main_result = models.CharField(max_length=150, null=True)
 
 class Pitch(models.Model):
-    at_bats = models.ForeignKey(AtBat, on_delete=models.CASCADE)
+    at_bats = models.ForeignKey(AtBat, related_name='pitches', on_delete=models.CASCADE)
     pitch_num = models.IntegerField(null=True)
     pitch_type = models.CharField(max_length=50, null=True)
     speed = models.FloatField(null=True)
