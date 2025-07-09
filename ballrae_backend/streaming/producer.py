@@ -8,9 +8,19 @@ from collections import defaultdict
 import sys
 import numpy as np
 import argparse
+import os
+from datetime import date
+import sys
+import concurrent.futures
+import threading
 
-# 이전 데이터 저장용 변수
-previous_data = None
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")
+
+import django
+django.setup()
+
+from ballrae_backend.games import models
 
 # 엔트리 저장 변수
 home_entry = None
@@ -18,10 +28,18 @@ away_entry = None
 home_lineup = None
 away_lineup = None
 
-# producer 전송 함수
-def produce(topic, result, producer):
-    global previous_data
+TEAM_MAP = {
+    'KA': 'HT',
+    'HE': 'WO',
+    'SL': 'SK',
+    'DS': 'OB'
+}
 
+def team_map(team):
+    return TEAM_MAP.get(team, team)
+
+# producer 전송 함수
+def produce(topic, result, producer, previous_data):
     # 만약 첫 번째 데이터라면, 그 데이터를 전송하고 저장
     if previous_data is None:
         previous_data = result
@@ -31,7 +49,7 @@ def produce(topic, result, producer):
 
         producer.flush()
         print(f"✅ 최초 데이터 전송")
-        return
+        return previous_data
 
     # 변경된 부분만 추출하는 로직
     changed_data = {}
@@ -52,6 +70,8 @@ def produce(topic, result, producer):
 
     else:
         print("- 변경된 데이터 없음")
+        
+    return previous_data
 
 # pitch result -> 이니셜을 문자 형태로 변환
 def convert_pitch_result(pitch_result: str):
@@ -321,6 +341,9 @@ def crawling(game):
             res = requests.get(url, headers=headers)
             data = res.json()
             
+            if "result" not in data or "textRelayData" not in data["result"]:
+                raise KeyError("'result' or 'textRelayData' not found")
+        
             relays = data["result"]["textRelayData"]["textRelays"]
             top, bot, game_done = split_half_inning_relays(relays, inning)
 
@@ -350,19 +373,50 @@ def crawling(game):
             if game_done == True:
                 result['game_over'] = game_done
                 return result, game_done
-            
+
+        except KeyError as e:
+            print("경기 시작 전")
+            break    
+        
         except Exception as e:
-            print(f"{inning}회 요청 오류: {e}")
+            print(f"{game} {inning}회 요청 오류: {e}")
             continue
 
     return result, game_done
 
-def main():
+def crawl_game_loop(game_id, topic, producer):
+    previous_data = None
+    print(f"[{game_id}] 실시간 크롤링 시작")
+
+    while True:
+        try:
+            result, game_done = crawling(game_id)
+
+            if result:
+                previous_data = produce(topic, result, producer, previous_data)
+            else:
+                print(f"[{topic}] 새 데이터 없음")
+
+            if game_done:
+                print(f"[{topic}] 경기 종료. 스레드 종료")
+                break
+
+        except KeyError as e:
+            print(f"[{topic}] KeyError 발생: {e}. 크롤링 종료")
+            break
+
+        except Exception as e:
+            print(f"[{topic}] 오류 발생: {e}")
+        
+        time.sleep(20)
+
+def get_realtime_data():
     # parser = argparse.ArgumentParser()
     # parser.add_argument('--id')
     # args = parser.parse_args()
 
-    game = "20250706HHWO02025"
+    today = date.today()
+    game_ids = models.Game.objects.filter(date__date=today).values_list('id', flat=True)
 
     topic = '2025'
 
@@ -371,22 +425,63 @@ def main():
         # bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(crawl_game_loop, game_id, topic, producer) for game_id in game_ids]
 
-    print("- 실시간 크롤링 시작 (10초 간격)")
+        # 모든 스레드가 끝날 때까지 대기
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"스레드 내부 에러: {e}")
+    
 
-    while True:
-        new_data, game_done = crawling(game)
+def get_all_game_datas():
+    game_ids = models.Game.objects.filter(status='done').values_list('id', flat=True)
+    
+    for game in game_ids:
+        date = game[:8]
+        away_team = team_map(game[8:10])
+        home_team = team_map(game[10:12])
+        dh = game[12]
+        year = game[:4]
+
+        new_data, game_done = crawling(f'{date}{away_team}{home_team}{dh}{year}')
+        topic = year
+        producer = KafkaProducer(
+            bootstrap_servers='kafka:9092',
+            # bootstrap_servers='localhost:9092',
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
 
         if new_data:
-            produce(topic, new_data, producer)
+            produce(topic, new_data, producer, None)
         else:
             print("- 새 데이터 없음")
 
-        if game_done:     
-            print("경기 종료됨. 프로그램 종료.")
-            sys.exit(0)  # 프로세스 종료
+        if game_done: continue
 
-        time.sleep(20)
+        
+
+def test():
+    new_data, game_done = crawling('20250708HTHH02025')
+    topic = '2025'
+    producer = KafkaProducer(
+        bootstrap_servers='kafka:9092',
+        # bootstrap_servers='localhost:9092',
+        value_serializer=lambda v: json.dumps(v).encode('utf-8')
+    )
+    
+    if new_data:
+        produce(topic, new_data, producer, None)
+    else:
+        print("- 새 데이터 없음")
+    
+    if game_done: sys.exit(0)
+
+def main():
+    test()
 
 if __name__ == "__main__":
     main()
