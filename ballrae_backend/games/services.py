@@ -26,7 +26,7 @@ def save_at_bat_transactionally(data: dict):
         ).exists()
 
         if exists:
-            print(f"🟨 이미 저장된 타석: {atbat.get('actual_batter')} #{atbat.get('appearance_num')}")
+            print(f"이미 저장된 타석: {atbat.get('actual_batter')} #{atbat.get('appearance_num')}")
             continue
 
         # 새 타석 저장

@@ -60,7 +60,7 @@ services:
   kafka-consumer:
     container_name: ballrae-kafka-consumer
     build: .
-    command: python -u consumer.py
+    command: python -u ballrae_backend/streaming/consumer.py
     depends_on:
       - db
       - kafka
@@ -70,17 +70,21 @@ services:
       - .:/app
     # kafka가 실행안되면 broker unavailable뜨니까~
     restart: on-failure
+    working_dir: /app
   
   kafka-producer:
     container_name: ballrae-kafka-producer
     build: .
-    command: python -u producer.py
+    command: python -u ballrae_backend/streaming/producer.py
     depends_on:
       - db
       - kafka
+    env_file:
+      - .env
     volumes:
       - .:/app
     restart: on-failure
+    working_dir: /app
   
   airflow-webserver:
     container_name: ballrae-airflow-webserver
