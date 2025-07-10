@@ -11,3 +11,6 @@ db.sqlite3
 
 # macOS 특유의 숨김 파일
 .DS_Store
+
+# 크롤링 테스트
+test.ipynb
