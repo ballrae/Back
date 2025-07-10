@@ -15,3 +15,7 @@ holidayskr
 adrf
 daphne
 channels
+
+celery[redis]
+
+redis>=4.0.0
