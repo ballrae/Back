@@ -10,6 +10,7 @@ from kafka import KafkaConsumer
 import asyncio
 from .serializers import InningSerializer
 import json
+from .serializers import InningSerializer  # 필요 시 import
 
 def get_play(at_bats):
     result = []
@@ -64,26 +65,29 @@ class GameRelayView(APIView):
         except Game.DoesNotExist:
             return Response({'message': '경기 정보 없음'}, status=status.HTTP_404_NOT_FOUND)
 
+        inning_data = {}
         # 해당 이닝만 필터링
-        inning_obj = game.innings.filter(inning_number=inning).first()
-        if not inning_obj:
+        inning_objs = game.innings.filter(inning_number=inning)
+
+        print(inning_objs)
+        if not inning_objs:
             return Response({'message': f'{inning}회 이닝 정보가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # 이닝 하나만 serialize
-        from .serializers import InningSerializer  # 필요 시 import
-        inning_serializer = InningSerializer(inning_obj)
+        else:
+            inning_data['top'] = InningSerializer(inning_objs[0]).data
+            inning_data['bot'] = InningSerializer(inning_objs[1]).data
 
         if date_obj == today:
             return Response({
                 'status': 'OK_REALTIME',
                 'message': f'{inning}회 이닝 정보 (실시간)',
-                'data': inning_serializer.data
+                'data': inning_data
             }, status=status.HTTP_200_OK)
         elif date_obj < today:
             return Response({
                 'status': 'OK_ARCHIVED',
                 'message': f'{inning}회 이닝 정보 (과거 경기)',
-                'data': inning_serializer.data
+                'data': inning_data
             }, status=status.HTTP_200_OK)
         else:
             return Response({'message': '예정된 경기입니다.'}, status=status.HTTP_200_OK)
