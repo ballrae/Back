@@ -8,7 +8,8 @@ from .serializers import PostSerializer, PostCreateSerializer, PostDetailSeriali
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import get_object_or_404
 
-from .hate_filter import filter_text # 필터링 모델
+from .tasks import filter_post_text_task
+from .tasks import filter_comment_text_task
 
 class TeamPostListView(APIView):
     def get(self, request, team_id):
@@ -26,29 +27,28 @@ class PostCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # 제목과 내용 필드 이름을 올바르게 사용해야 함
-        original_title = request.data.get('post_title', '')
-        original_content = request.data.get('post_content', '')
+        title = request.data.get('post_title', '')
+        content = request.data.get('post_content', '')
 
-        # 필터링
-        filtered_title = filter_text(original_title)
-        filtered_content = filter_text(original_content)
-
-        # 교체
         data = request.data.copy()
-        data['post_title'] = filtered_title
-        data['post_content'] = filtered_content
+        data['post_title'] = title  # 필터링 없이 원본 저장
+        data['post_content'] = content
 
         serializer = PostCreateSerializer(data=data)
         if serializer.is_valid():
             post = serializer.save(user=request.user)
+
+            # ✅ Celery 백그라운드 작업으로 필터링 요청 보내기
+            filter_post_text_task.delay(post.id, title, content)
+
             return Response({
                 'status': 'OK',
-                'message': '작성 완료',
+                'message': '작성 완료 (필터링 중)',
                 'data': {
                     'postId': post.id
                 }
             }, status=status.HTTP_201_CREATED)
+
         return Response({'status': 'error', 'message': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
@@ -91,19 +91,21 @@ class CommentListCreateView(APIView):
     def post(self, request, team_id, post_id):
         post = get_object_or_404(Post, id=post_id, team__id=team_id)
 
-        original_text = request.data.get('content', '')
-        filtered_text = filter_text(original_text)
-
+        original_text = request.data.get('comment_content', '')  # 원본만 저장
         data = request.data.copy()
-        data['content'] = filtered_text
+        data['comment_content'] = original_text
 
         serializer = CommentCreateSerializer(data=data)
         if serializer.is_valid():
-            serializer.save(user=request.user, post=post)
-            read_serializer = CommentSerializer(serializer.instance)
+            comment = serializer.save(user=request.user, post=post)
+
+            # ✅ 필터링을 Celery로 백그라운드 처리
+            filter_comment_text_task.delay(comment.id, original_text)
+
+            read_serializer = CommentSerializer(comment)
             return Response({
                 'status': 'OK',
-                'message': '댓글 등록 완료',
+                'message': '댓글 등록 완료 (필터링 중)',
                 'data': read_serializer.data
             }, status=status.HTTP_201_CREATED)
 
@@ -111,7 +113,6 @@ class CommentListCreateView(APIView):
             'status': 'error',
             'message': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
-    
 
 # 좋아요 
 class TogglePostLikeView(APIView):

@@ -24,6 +24,27 @@ services:
       - "8000:8000"
     depends_on:
       - db
+  celery:
+    build: .
+    container_name: ballrae-celery
+    command: celery -A ballrae_backend worker --loglevel=info
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      - web
+      - redis
+    env_file:
+      - .env
+    restart: always
+    networks:
+    - backend
+  redis:
+    image: redis:7
+    container_name: ballrae-redis
+    ports:
+      - "6379:6379"
+    restart: always
 
   hate-filter-api:
     build:
@@ -31,7 +52,9 @@ services:
     container_name: hate-filter-api
     ports:
       - "8001:8001"
-    restart: always    
+    restart: always
+    networks:
+    - backend    
     
   zookeeper:
     image: bitnami/zookeeper:latest
@@ -130,3 +153,7 @@ volumes:
   kafka_data:
   zookeeper_data:
   airflow_db:
+
+networks:
+  backend:
+    driver: bridge
