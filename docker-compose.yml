@@ -24,6 +24,7 @@ services:
       - "8000:8000"
     depends_on:
       - db
+
   celery:
     build: .
     container_name: ballrae-celery
@@ -37,8 +38,7 @@ services:
     env_file:
       - .env
     restart: always
-    networks:
-    - backend
+
   redis:
     image: redis:7
     container_name: ballrae-redis
@@ -46,15 +46,18 @@ services:
       - "6379:6379"
     restart: always
 
+
   hate-filter-api:
     build:
       context: ./hate-filter-api
+      dockerfile: Dockerfile  # 명시해주는 것이 명확함
     container_name: hate-filter-api
     ports:
       - "8001:8001"
     restart: always
-    networks:
-    - backend    
+    volumes:
+      - ./hate-filter-api/app:/app/app  # onnx_model 포함 모델 전체 공유
+
     
   zookeeper:
     image: bitnami/zookeeper:latest
@@ -154,6 +157,3 @@ volumes:
   zookeeper_data:
   airflow_db:
 
-networks:
-  backend:
-    driver: bridge

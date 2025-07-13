@@ -33,10 +33,9 @@ class PostDetailSerializer(serializers.ModelSerializer):
     authorTeamId = serializers.CharField(source='user.team_id')
     authorTeamName = serializers.CharField(source='user.team.team_name') 
 
-    # 좋아요
     likesCount = serializers.SerializerMethodField()
     isLiked = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = Post
         fields = [
@@ -48,20 +47,16 @@ class PostDetailSerializer(serializers.ModelSerializer):
             'authorId',
             'authorNickname',
             'authorTeamId',
-            'authorTeamName',  
+            'authorTeamName',
             'likesCount',
             'isLiked',
         ]
-    def get_isLiked(self, obj):
-        request = self.context.get('request')
-        print("user:", request.user)  # 여기 추가해봐!
-        if request and request.user.is_authenticated:
-            return obj.likes.filter(user_id=request.user.id).exists()
-        return False
 
     def get_likesCount(self, obj):
-        return obj.likes.count()
+        return self.context.get('likes_count', 0)
 
+    def get_isLiked(self, obj):
+        return self.context.get('is_liked', False)
 
 from rest_framework import serializers
 from .models import Comment
