@@ -15,5 +15,7 @@ holidayskr
 adrf
 daphne
 channels
+
+celery
 redis
 
