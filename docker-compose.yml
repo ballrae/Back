@@ -56,7 +56,7 @@ services:
       - "8001:8001"
     restart: always
     volumes:
-      - ./hate-filter-api/app:/app/app  # onnx_model 포함 모델 전체 공유
+      - ./hate-filter-api/app:/app  
 
     
   zookeeper:
