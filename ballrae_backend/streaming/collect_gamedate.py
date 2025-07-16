@@ -83,7 +83,7 @@ for year in [2023, 2024, 2025]:
             response = requests.get(url, headers=headers)
             data = response.json()
 
-            for j in range(5):
+            for j in range(6):
                 for k in range(7):
                     temp = data['rows'][j]['row'][k]
                     text = temp['Text']
@@ -141,29 +141,49 @@ for year in [2023, 2024, 2025]:
                         for idx, entry in enumerate(entries):
                             dh = idx + 1 if len(entries) > 1 else 0
                             game_id = f"{date}{away}{home}{dh}2025"
+
                             try:
-                                if entry["status"] == "done":
-                                    cur.execute("""
-                                        INSERT INTO games_game (id, status, dh, score, date, home_team, away_team)
-                                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                                    """, (game_id, "done", dh, entry["score"], time, home, away))
+                                cur.execute("SELECT status FROM games_game WHERE id = %s", (game_id,))
+                                existing = cur.fetchone()
 
-                                elif entry["status"] == "cancelled":
-                                    cur.execute("""
-                                        INSERT INTO games_game (id, status, dh, date, home_team, away_team)
-                                        VALUES (%s, %s, %s, %s, %s, %s)
-                                    """, (game_id, "cancelled", dh, time, home, away))
+                                if existing is None:
+                                    # 존재하지 않는 경우 insert
+                                    if entry["status"] == "done":
+                                        cur.execute("""
+                                            INSERT INTO games_game (id, status, dh, score, date, home_team, away_team)
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                        """, (game_id, "done", dh, entry["score"], time, home, away))
+                                    elif entry["status"] == "cancelled":
+                                        cur.execute("""
+                                            INSERT INTO games_game (id, status, dh, date, home_team, away_team)
+                                            VALUES (%s, %s, %s, %s, %s, %s)
+                                        """, (game_id, "cancelled", dh, time, home, away))
+                                    elif entry["status"] == "scheduled":
+                                        cur.execute("""
+                                            INSERT INTO games_game (id, status, dh, date, home_team, away_team)
+                                            VALUES (%s, %s, %s, %s, %s, %s)
+                                        """, (game_id, "scheduled", dh, time, home, away))
 
-                                elif entry["status"] == "scheduled":
-                                    cur.execute("""
-                                        INSERT INTO games_game (id, status, dh, date, home_team, away_team)
-                                        VALUES (%s, %s, %s, %s, %s, %s)
-                                    """, (game_id, "scheduled", dh, time, home, away))
+                                elif existing[0] == "scheduled":
+                                    # 존재하고 status가 scheduled면 update
+                                    if entry["status"] == "done":
+                                        cur.execute("""
+                                            UPDATE games_game
+                                            SET status = %s, score = %s
+                                            WHERE id = %s
+                                        """, ("done", entry["score"], game_id))
+                                    elif entry["status"] == "cancelled":
+                                        cur.execute("""
+                                            UPDATE games_game
+                                            SET status = %s
+                                            WHERE id = %s
+                                        """, ("cancelled", game_id))
 
-                            except UniqueViolation:
+                            except Exception as e:
                                 conn.rollback()
-                                print(f"중복으로 무시됨: {game_id}")
-                conn.commit()
+                                print(f"오류 발생: {game_id} -> {e}")
+                            else:
+                                conn.commit()
                         
         except Exception as e:
             print(e)
