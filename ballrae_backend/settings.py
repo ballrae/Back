@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "ballrae_backend.teams", 
     "ballrae_backend.posts", 
     "ballrae_backend.games",
+    "ballrae_backend.players",
 ]
 
 
