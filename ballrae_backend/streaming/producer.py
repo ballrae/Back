@@ -317,7 +317,10 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
         # main_result 추출
         if result and actual_batter and result.startswith(actual_batter):
             split_parts = result.split("|")
-            main_play = split_parts[0].split(":", 1)[1].strip() if ":" in split_parts[0] else ""
+            main_play = ""
+            if split_parts:
+                for s in split_parts:
+                    if s.startswith(actual_batter): main_play = s.split(': ')[1]
             idx = pitch_merge_tracker[pitch_merge_key]
             at_bats[idx]["main_result"] = main_play
             if len(split_parts) > 1:
@@ -489,10 +492,11 @@ def get_realtime_data():
                 print(f"스레드 내부 에러: {e}")
     
 
-def get_all_game_datas():
+def get_all_game_datas(select_year):
     game_ids = models.Game.objects.filter(
         status='done',
-        date__date__gt=datetime.datetime(2025, 6, 28).date()
+        # date__date__gt=datetime.datetime(2025, 6, 28).date(),
+        id__startswith=str(select_year)
     ).values_list('id', flat=True)
     
     for game in game_ids:
@@ -516,9 +520,10 @@ def get_all_game_datas():
 
         if new_data:
             for key in new_data.keys():
-                if key == 'game_id' or key == 'game_over': continue
+                if key in ['game_over', 'home_lineup', 'away_lineup', 'game_id']: continue
                 else:
-                    save_at_bat_transactionally(new_data[key])
+                    # print([key])
+                    save_at_bat_transactionally(new_data[key], game)
         else:
             print("- 새 데이터 없음")
 
@@ -550,8 +555,10 @@ def test():
 
 def main():
     # test()
-    get_realtime_data()
-    # get_all_game_datas()
+    # get_realtime_data()
+    # get_all_game_datas(2023)
+    get_all_game_datas(2024)
+    # get_all_game_datas(2025)
     # print(team_map('HE'))
 
 if __name__ == "__main__":

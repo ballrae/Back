@@ -4,8 +4,7 @@ import json
 from django.db.models import Q
 
 @transaction.atomic
-def save_at_bat_transactionally(data: dict):
-    game_id = data['game_id']
+def save_at_bat_transactionally(data: dict, game_id):
     atbat_data = data['at_bats']
 
     game, _ = Game.objects.get_or_create(id=game_id)
@@ -26,13 +25,13 @@ def save_at_bat_transactionally(data: dict):
                 batter, _ = Player.objects.get_or_create(
                     player_name=atbat.get('actual_batter'),
                     position='B',
-                    team_id=p_id
+                    team_id=b_id
                 )
 
                 pitcher, _ = Player.objects.get_or_create(
                     player_name=atbat.get('pitcher'),
                     position='P',
-                    team_id=b_id
+                    team_id=p_id
                 )
         
             # 중복 체크
