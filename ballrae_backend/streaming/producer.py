@@ -13,6 +13,8 @@ import datetime
 import sys
 import concurrent.futures
 import threading
+from datetime import datetime, timedelta
+from django.db.models import Q
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")
@@ -264,7 +266,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
                     "on_base": None,
                     "strike_zone": None,
                     "appearance_number": 0,
-                    "result": text,
+                    "full_result": text,
                     "pitch_sequence": None
                 }
 
@@ -529,15 +531,57 @@ def get_all_game_datas(select_year):
 
         if game_done: continue
 
-        
+def get_game_datas(start_date, end_date):
+    start = datetime.strptime(str(start_date), "%Y%m%d")
+    end = datetime.strptime(str(end_date), "%Y%m%d")
+
+    q = Q()
+    current = start
+    while current <= end:
+        q |= Q(id__startswith=str(current.strftime("%Y%m%d")))
+        current += timedelta(days=1)
+
+    # ✅ 전체 날짜의 game_ids 한꺼번에 조회
+    game_ids = models.Game.objects.filter(q).values_list('id', flat=True)
+    print(game_ids)
+
+    for game in game_ids:
+        date = game[:8]
+        away_team = team_map(game[8:10])
+        home_team = team_map(game[10:12])
+
+        dh = game[12]
+        year = game[:4]
+
+        game_id = f"{date}{away_team}{home_team}{dh}{year}"
+        print(game_id)
+
+        new_data, game_done = crawling(game_id)
+        # topic = year
+        # producer = KafkaProducer(
+        #     bootstrap_servers='kafka:9092',
+        #     # bootstrap_servers='localhost:9092',
+        #     value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        # )
+
+        if new_data:
+            for key in new_data.keys():
+                if key in ['game_over', 'home_lineup', 'away_lineup', 'game_id']: continue
+                else:
+                    # print([key])
+                    save_at_bat_transactionally(new_data[key], game)
+        else:
+            print("- 새 데이터 없음")
+
+        if game_done: continue
 
 def test():
-    new_data, game_done = crawling('20230316SKLT02023')
+    new_data, game_done = crawling('20250718HHKT02025')
 
     if new_data:
         for key in new_data.keys():
             if key == 'game_id' or key == 'game_over': continue
-            else: print(new_data[key]['game_id'])
+            # else: print(new_data[key]['game_id'])
                 
     # topic = '2025'
     # producer = KafkaProducer(
@@ -554,12 +598,12 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    # test()
+    test()
     # get_realtime_data()
-    # get_all_game_datas(2023)
+    get_all_game_datas(2023)
     get_all_game_datas(2024)
-    # get_all_game_datas(2025)
-    # print(team_map('HE'))
+    get_all_game_datas(2025)
+    # get_game_datas(20250711, 20250720)
 
 if __name__ == "__main__":
     main()
