@@ -17,4 +17,4 @@ daphne
 channels
 celery
 redis
-
+httpx
