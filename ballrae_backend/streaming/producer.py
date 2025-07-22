@@ -598,11 +598,12 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    test()
+    print("producer")
+    # test()
     # get_realtime_data()
-    get_all_game_datas(2023)
-    get_all_game_datas(2024)
-    get_all_game_datas(2025)
+    # get_all_game_datas(2023)
+    # get_all_game_datas(2024)
+    # get_all_game_datas(2025)
     # get_game_datas(20250711, 20250720)
 
 if __name__ == "__main__":
