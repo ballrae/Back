@@ -4,13 +4,8 @@ from adrf.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Game
-from .serializers import GameSerializer
+from .serializers import GameSerializer, InningSerializer, GameDateSerializer
 from datetime import datetime
-from kafka import KafkaConsumer
-import asyncio
-from .serializers import InningSerializer
-import json
-from .serializers import InningSerializer  # 필요 시 import
 
 def get_play(at_bats):
     result = []
@@ -37,7 +32,7 @@ class GameListView(APIView):
         date_obj = datetime.strptime(date, '%Y%m%d').date()
         try:
             games = Game.objects.filter(date__date=date_obj)
-            serializer = GameSerializer(games, many=True)
+            serializer = GameDateSerializer(games, many=True)
             return Response({
                 'status': 'OK',
                 'message': '게임 목록 조회 성공',

@@ -5,34 +5,36 @@ from ballrae_backend.games.models import Player, Game  # 이미 정의된 모델
 
 class Batter(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
-    hits = models.IntegerField(default=0, null=True)
-    at_bats = models.IntegerField(default=0, null=True)
-    walks = models.IntegerField(default=0, null=True)
-    strikeouts = models.IntegerField(default=0, null=True)
-    home_runs = models.IntegerField(default=0, null=True)
-    doubles = models.IntegerField(default=0, null=True)
-    triples = models.IntegerField(default=0, null=True)
-    player_name = models.CharField(max_length=20, null=True)   
+    player_name = models.CharField(max_length=20, null=True)    # 선수 이름
+    games = models.IntegerField(default=0, null=True)   # 경기수
+    pa = models.IntegerField(default=0, null=True)  # 타수
+    ab = models.IntegerField(default=0, null=True)  # 타석
+    walks = models.IntegerField(default=0, null=True)   # 볼넷/사구/고의4구
+    strikeouts = models.IntegerField(default=0, null=True)  # 삼진
+    home_runs = models.IntegerField(default=0, null=True)   # 홈런
+    singles = models.IntegerField(default=0, null=True)     # 단타 (1루타)
+    doubles = models.IntegerField(default=0, null=True)     # 2루타
+    triples = models.IntegerField(default=0, null=True)     # 3루타
     
-    # 자동 계산 항목은 메서드로 제공
-    @property
-    def avg(self):
-        return self.hits / self.at_bats if self.at_bats else 0
+    # # 자동 계산 항목은 메서드로 제공
+    # @property
+    # def avg(self):
+    #     return self.hits / self.at_bats if self.at_bats else 0
 
-    @property
-    def obp(self):
-        pa = self.at_bats + self.walks  # 희생타 제외
-        return (self.hits + self.walks) / pa if pa else 0
+    # @property
+    # def obp(self):
+    #     pa = self.at_bats + self.walks  # 희생타 제외
+    #     return (self.hits + self.walks) / pa if pa else 0
 
-    @property
-    def slg(self):
-        total_bases = (self.hits - self.doubles - self.triples - self.home_runs) + \
-                      (2 * self.doubles) + (3 * self.triples) + (4 * self.home_runs)
-        return total_bases / self.at_bats if self.at_bats else 0
+    # @property
+    # def slg(self):
+    #     total_bases = (self.hits - self.doubles - self.triples - self.home_runs) + \
+    #                   (2 * self.doubles) + (3 * self.triples) + (4 * self.home_runs)
+    #     return total_bases / self.at_bats if self.at_bats else 0
 
-    @property
-    def ops(self):
-        return self.obp + self.slg
+    # @property
+    # def ops(self):
+    #     return self.obp + self.slg
     
     def save(self, *args, **kwargs):
         if self.player:
@@ -41,12 +43,12 @@ class Batter(models.Model):
     
 class Pitcher(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True)
+    player_name = models.CharField(max_length=20, null=True)   
     innings_pitched = models.FloatField(default=0.0, null=True)
     earned_runs = models.IntegerField(default=0, null=True)
     strikeouts = models.IntegerField(default=0, null=True)
     walks = models.IntegerField(default=0, null=True)
-    player_name = models.CharField(max_length=20, null=True)   
 
-    @property
-    def era(self):
-        return (self.earned_runs * 9) / self.innings_pitched if self.innings_pitched else 0
+    # @property
+    # def era(self):
+    #     return (self.earned_runs * 9) / self.innings_pitched if self.innings_pitched else 0
