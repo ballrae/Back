@@ -29,7 +29,7 @@ DEBUG = True
 AUTH_USER_MODEL = 'users.User'
 
 
-ALLOWED_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1','*', '172.20.26.173']
+ALLOWED_HOSTS = ['0.0.0.0', 'localhost', '127.0.0.1', '*', '172.20.26.173', '3.235.198.53']
 
 # Application definition
 
