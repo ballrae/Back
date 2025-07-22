@@ -27,3 +27,8 @@ class GameSerializer(serializers.ModelSerializer):
     class Meta:
         model = Game
         fields = '__all__'
+
+class GameDateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Game
+        fields = ['id', 'status', 'dh', 'score', 'date', 'home_team', 'away_team']
