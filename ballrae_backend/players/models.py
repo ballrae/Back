@@ -6,8 +6,8 @@ from ballrae_backend.games.models import Player, Game  # 이미 정의된 모델
 class Batter(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     games = models.IntegerField(default=0, null=True)   # 경기수
-    pa = models.IntegerField(default=0, null=True)  # 타수
-    ab = models.IntegerField(default=0, null=True)  # 타석
+    pa = models.IntegerField(default=0, null=True)  # 타석
+    ab = models.IntegerField(default=0, null=True)  # 타수
     walks = models.IntegerField(default=0, null=True)   # 볼넷/사구/고의4구
     strikeouts = models.IntegerField(default=0, null=True)  # 삼진
     homeruns = models.IntegerField(default=0, null=True)   # 홈런
@@ -22,7 +22,8 @@ class Batter(models.Model):
 class Pitcher(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE, null=True)
     games = models.IntegerField(default=0)   # 경기수
-    pa = models.IntegerField(default=0, null=True)  # 피타수    
+    pa = models.IntegerField(default=0, null=True)  # 피타석    
+    ab = models.IntegerField(default=0, null=True)  # 피타수
     innings = models.FloatField(default=0.0, null=True)
     walks = models.IntegerField(default=0, null=True)
     strikeouts = models.IntegerField(default=0, null=True)  # 탈삼진

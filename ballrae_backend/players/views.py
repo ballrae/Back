@@ -8,9 +8,9 @@ from .serializers import PitcherSerializer, BatterSerializer
 from .models import Batter, Pitcher
 
 class PitchersView(APIView):
-    def get(self, request, name):
+    def get(self, request, id):
         try:
-            player = Player.objects.filter(player_name=name).first()
+            player = Player.objects.filter(id=id).first()
             pitcher = Pitcher.objects.get(player=player)
             serializer = PitcherSerializer(pitcher)
             return Response({
@@ -28,9 +28,9 @@ class PitchersView(APIView):
             }, status=status.HTTP_200_OK)
         
 class BattersView(APIView):
-    def get(self, request, name):
+    def get(self, request, id):
         try:
-            player = Player.objects.filter(player_name=name).first()
+            player = Player.objects.filter(id=id).first()
             batter = Batter.objects.get(player=player)
             serializer = BatterSerializer(batter)
             return Response({

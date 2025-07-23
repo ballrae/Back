@@ -35,7 +35,7 @@ def calculate_innings(atbats):
 @transaction.atomic
 def save_batter_transactionally(player: Player):
     atbats = AtBat.objects.filter(
-        actual_player=player.player_name,
+        actual_player=player.id,
         inning__game_id__gte=cutoff_date
     )
 
@@ -70,13 +70,14 @@ def save_batter_transactionally(player: Player):
 @transaction.atomic
 def save_pitcher_transactionally(player: Player):
     atbats = AtBat.objects.filter(
-        pitcher=player.player_name,
+        pitcher=player.id,
         inning__game_id__gte=cutoff_date
     )
 
     # 기본 통계 계산
     total_games = atbats.values("inning__game_id").distinct().count()
     pa = atbats.count()
+    ab = atbats.exclude(main_result__iregex="볼넷|사구|4구|몸에|희생플라이|희생번트").count()
     walks = atbats.filter(main_result__iregex=r'볼넷|사구|4구|몸에').count()
     strikeouts = atbats.filter(main_result__iregex=r'삼진|낫 아웃').count()
     homeruns = atbats.filter(main_result__icontains='홈런').count()
@@ -92,6 +93,7 @@ def save_pitcher_transactionally(player: Player):
         defaults={
             "games": total_games,
             "pa": pa,
+            "ab": ab,
             "walks": walks,
             "strikeouts": strikeouts,
             "homeruns": homeruns,
