@@ -46,3 +46,31 @@ class BattersView(APIView):
                 'data': "존재하지 않는 타자입니다.",
                 'error code': str(e)
             }, status=status.HTTP_200_OK)
+        
+class PlayerIdView(APIView):
+    def get(self, request):
+        name = request.query_params.get("name")
+
+        if not name:
+            return Response({
+                'status': 'Bad Request',
+                'message': '선수 이름(name)을 쿼리 파라미터로 입력해주세요.',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        players = Player.objects.filter(player_name=name)
+        if players.exists():
+            return Response({
+                'status': 'OK',
+                'message': f'{name} 선수 ID 반환 성공',
+                'data': [
+                    {"id": player.id, "player_name": player.player_name}
+                    for player in players
+                ]
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'status': 'Not Found',
+                'message': f'{name} 이름의 선수를 찾을 수 없습니다.',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)

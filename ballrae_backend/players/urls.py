@@ -1,7 +1,10 @@
 from django.urls import path
-from .views import PitchersView, BattersView
+from .views import PitchersView, BattersView, PlayerIdView
+from ballrae_backend.games.views import PlayerView
 
 urlpatterns = [
-    path('pitcher/<int:id>/', PitchersView.as_view(), name='player-view'), # 중계 내용
-    path('batter/<int:id>/', BattersView.as_view(), name='player-view'), # 중계 내용
+    path('pitcher/<int:id>/', PitchersView.as_view(), name='pitcher-view'),
+    path('batter/<int:id>/', BattersView.as_view(), name='batter-view'),
+    path('', PlayerView.as_view(), name='player-view'),
+    path('player/id/', PlayerIdView.as_view(), name='player-id-view'),
 ]
