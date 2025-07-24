@@ -14,9 +14,9 @@ class SimplePlayerSerializer(serializers.ModelSerializer):
 
 class AtBatSerializer(serializers.ModelSerializer):
     pitches = PitchSerializer(many=True, read_only=True)
-    actual_player = SimplePlayerSerializer(read_only=True)
-    original_player = SimplePlayerSerializer(read_only=True)
-    pitcher = SimplePlayerSerializer(read_only=True)
+    # actual_player = SimplePlayerSerializer(read_only=True)
+    # original_player = SimplePlayerSerializer(read_only=True)
+    # pitcher = SimplePlayerSerializer(read_only=True)
 
     class Meta:
         model = AtBat
@@ -46,3 +46,7 @@ class PlayerSerializer(serializers.ModelSerializer):
         model = Player
         fields = ['id', 'player_name', 'team_id']
 
+class GamePlayerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Player
+        fields = '__all__'
