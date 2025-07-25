@@ -44,7 +44,7 @@ class GameDateSerializer(serializers.ModelSerializer):
 class PlayerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Player
-        fields = ['id', 'player_name', 'team_id']
+        fields = ['id', 'player_name', 'team_id', 'position']
 
 class GamePlayerSerializer(serializers.ModelSerializer):
     class Meta:
