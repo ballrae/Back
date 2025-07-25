@@ -601,8 +601,10 @@ def main():
     print("producer")
     # test()
     # get_realtime_data()
-    # get_all_game_datas(2023)
-    # get_all_game_datas(2024)
+    get_all_game_datas(2021)
+    get_all_game_datas(2022)
+    get_all_game_datas(2023)
+    get_all_game_datas(2024)
     # get_all_game_datas(2025)
     # get_game_datas(20250711, 20250720)
 
