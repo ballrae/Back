@@ -69,7 +69,8 @@ field_map = {
     "대구": "DG", "광주": "GJ"
     }
 
-for year in [2023, 2024, 2025]:
+# for year in [2023, 2024, 2025]:
+for year in [2021, 2022]:
     # 월 단위 크롤링
     for i in range(3, 11):
         print(i, "월")
