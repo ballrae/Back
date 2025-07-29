@@ -18,9 +18,9 @@ class Inning(models.Model):
 class Player(models.Model):
     player_name = models.CharField(max_length=20)
     position = models.CharField(max_length=10, null=True)
-    # player_code = models.CharField(max_length=10, null=True)
     team_id = models.CharField(max_length=5)
     player_bdate = models.DateField(null=True)
+    pcode = models.CharField(max_length=10, null=True)     # 크롤링용 pcode
 
 class PlayerTeamHistory(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)

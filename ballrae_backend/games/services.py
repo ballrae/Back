@@ -23,15 +23,17 @@ def save_at_bat_transactionally(data: dict, game_id):
 
             if pitcher:
                 batter, _ = Player.objects.get_or_create(
-                    player_name=atbat.get('actual_batter'),
+                    # player_name=atbat.get('actual_batter'),
                     position='B',
-                    team_id=b_id
+                    team_id=b_id,
+                    pcode=atbat.get('actual_batter')
                 )
 
                 pitcher, _ = Player.objects.get_or_create(
-                    player_name=atbat.get('pitcher'),
+                    # player_name=atbat.get('pitcher'),
                     position='P',
-                    team_id=p_id
+                    team_id=p_id,
+                    pcode=atbat.get('pitcher')
                 )
         
             # 중복 체크

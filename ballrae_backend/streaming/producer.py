@@ -237,23 +237,26 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             text = opt.get("text", "")
             game_state = opt.get('currentGameState', {})
 
-            pcode = game_state.get('pitcher')
-            pitcher = merged_dict.get(pcode, None)
+            pitcher = game_state.get('pitcher')
+            actual_batter = game_state.get('batter')
             score = f"{game_state.get('awayScore')}:{game_state.get('homeScore')}"
             base1, base2, base3 = game_state.get('base1'), game_state.get('base2'), game_state.get('base3')
             out = game_state.get('out')
 
             # 타자 정보 파싱
             batter_info = opt.get("batterRecord", {})
-            actual_batter = batter_info.get("name", actual_batter)
+            # actual_batter = batter_info.get("name", actual_batter)
+            # actual_batter = batter_info.get("name", actual_batter)
+            # original_batter = merged_dict.get(original_batter, '')
+            # actual_batter = merged_dict.get(actual_batter)
             bat_order = batter_info.get("batOrder", bat_order)
 
             # 교체 상황 파싱
             match = re.search(r"(\d+)번타자\s+(\S+)\s+:\s+대타\s+(\S+)", text)
             if match:
                 bat_order = int(match.group(1))
-                original_batter = match.group(2)
-                actual_batter = match.group(3)
+                original_batter = merged_dict.get(match.group(2), '')
+                actual_batter = merged_dict.get(match.group(3), '')
                 pending_sub = {
                     "inning": inning,
                     "half": half,
@@ -317,12 +320,13 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             current_at_bat_key = pitch_merge_key
 
         # main_result 추출
-        if result and actual_batter and result.startswith(actual_batter):
+        actual_batter_name = merged_dict[actual_batter]
+        if result and actual_batter_name and result.startswith(actual_batter_name):
             split_parts = result.split("|")
             main_play = ""
             if split_parts:
                 for s in split_parts:
-                    if s.startswith(actual_batter): main_play = s.split(': ')[1]
+                    if s.startswith(actual_batter_name): main_play = s.split(': ')[1]
             idx = pitch_merge_tracker[pitch_merge_key]
             at_bats[idx]["main_result"] = main_play
             if len(split_parts) > 1:
@@ -330,15 +334,39 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
 
     return at_bats
 
-def create_merged_dict(entries):
+def create_merged_dict(entries, game_id):
     merged = {}
+    existing_pcodes = set(models.Player.objects.values_list('pcode', flat=True))
+
+    # game_id에서 팀 코드 추출
+    away_code = team_map(game_id[8:10])
+    home_code = team_map(game_id[10:12])
+
     for entry_list in entries:
-        pitchers = entry_list['pitcher']
-        for pitcher in pitchers:
-            pcode = pitcher.get("pcode")
-            if pcode is not None:
-                merged[pcode] = pitcher['name']
-            else: continue
+        # 엔트리 팀 판단
+        is_home = entry_list == home_entry or entry_list == home_lineup
+        team_id = home_code if is_home else away_code
+
+        for group in ['pitcher', 'batter']:
+            for player in entry_list[group]:
+                pcode = player.get("pcode")
+                name = player.get("name")
+                position = "B" if group == "batter" else "P"
+
+                if pcode is None or name is None:
+                    continue
+
+                if pcode not in existing_pcodes:
+                    models.Player.objects.create(
+                        pcode=pcode,
+                        player_name=name,
+                        team_id=team_id,
+                        position=position
+                    )
+                    existing_pcodes.add(pcode)
+
+                merged[pcode] = name
+
     return merged
 
 def get_lineup(lineup):
@@ -397,7 +425,7 @@ def crawling(game):
 
                 entries = [home_entry, away_entry, home_lineup, away_lineup]
 
-                merged_entries = create_merged_dict(entries)
+                merged_entries = create_merged_dict(entries, game_id)
         
             if top:
                 key = f"{inning}회초"
@@ -541,7 +569,7 @@ def get_game_datas(start_date, end_date):
         q |= Q(id__startswith=str(current.strftime("%Y%m%d")))
         current += timedelta(days=1)
 
-    # ✅ 전체 날짜의 game_ids 한꺼번에 조회
+    # 전체 날짜의 game_ids 한꺼번에 조회
     game_ids = models.Game.objects.filter(q).values_list('id', flat=True)
     print(game_ids)
 
@@ -581,7 +609,7 @@ def test():
     if new_data:
         for key in new_data.keys():
             if key == 'game_id' or key == 'game_over': continue
-            # else: print(new_data[key]['game_id'])
+            else: print(new_data[key])
                 
     # topic = '2025'
     # producer = KafkaProducer(
@@ -601,11 +629,11 @@ def main():
     print("producer")
     # test()
     # get_realtime_data()
-    get_all_game_datas(2021)
-    get_all_game_datas(2022)
-    get_all_game_datas(2023)
-    get_all_game_datas(2024)
-    # get_all_game_datas(2025)
+    # get_all_game_datas(2021)
+    # get_all_game_datas(2022)
+    # get_all_game_datas(2023)
+    # get_all_game_datas(2024)
+    get_all_game_datas(2025)
     # get_game_datas(20250711, 20250720)
 
 if __name__ == "__main__":
