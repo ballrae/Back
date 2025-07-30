@@ -4,9 +4,15 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
-from .serializers import PitcherSerializer, BatterSerializer
+from .serializers import  BatterSimpleSerializer, PitcherSimpleSerializer, PitcherSerializer, BatterSerializer
 from .models import Batter, Pitcher
 
+def get_serializer_for_player(player_obj):
+    if player_obj.position == "B":
+        return BatterSimpleSerializer(Batter.objects.get(player=player_obj))
+    elif player_obj.position == "P":
+        return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj))
+    
 class PitchersView(APIView):
     def get(self, request, id):
         try:
@@ -74,3 +80,23 @@ class PlayerIdView(APIView):
                 'message': f'{name} 이름의 선수를 찾을 수 없습니다.',
                 'data': None
             }, status=status.HTTP_404_NOT_FOUND)
+
+
+class PlayerMainPageView(APIView):
+    def get(self, request, id):
+        try:
+            player = Player.objects.get(id=id)
+            serializer = get_serializer_for_player(player)
+
+        except Player.DoesNotExist:
+            return Response({
+                "status": "Not Found",
+                "message": "해당하는 선수를 찾을 수 없습니다.",
+                "data": None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "status": "OK",
+            "message": f"{player.player_name} 선수 정보 조회 성공",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)

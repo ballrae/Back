@@ -35,8 +35,7 @@ def calculate_innings(atbats):
 @transaction.atomic
 def save_batter_transactionally(player: Player):
     atbats = AtBat.objects.filter(
-        # actual_player=player.id,
-        actual_player=player.player_name,
+        actual_player=player.pcode,
         inning__game_id__gte=cutoff_date
     )
 
@@ -72,7 +71,7 @@ def save_batter_transactionally(player: Player):
 def save_pitcher_transactionally(player: Player):
     atbats = AtBat.objects.filter(
         # pitcher=player.id,
-        pitcher=player.player_name,
+        pitcher=player.pcode,
         inning__game_id__gte=cutoff_date
     )
 

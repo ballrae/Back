@@ -14,6 +14,9 @@ class Batter(models.Model):
     singles = models.IntegerField(default=0, null=True)     # 단타 (1루타)
     doubles = models.IntegerField(default=0, null=True)     # 2루타
     triples = models.IntegerField(default=0, null=True)     # 3루타
+    war = models.FloatField(default=0.0, null=True)
+    wrc = models.FloatField(default=0.0, null=True)
+    babip = models.FloatField(default=0.0, null=True)
 
     @property
     def name(self):
@@ -31,6 +34,11 @@ class Pitcher(models.Model):
     singles = models.IntegerField(default=0, null=True)     # 피단타 (1루타)
     doubles = models.IntegerField(default=0, null=True)     # 피2루타
     triples = models.IntegerField(default=0, null=True)     # 피3루타
+    era = models.FloatField(default=0.0, null=True)
+    war = models.FloatField(default=0.0, null=True)
+    w = models.IntegerField(default=0, null=True) 
+    l = models.IntegerField(default=0, null=True) 
+    sv = models.IntegerField(default=0, null=True)
 
     @property
     def name(self):

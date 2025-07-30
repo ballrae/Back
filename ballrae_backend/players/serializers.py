@@ -2,6 +2,7 @@
 from rest_framework import serializers
 from .models import Batter, Pitcher
 from ballrae_backend.games.serializers import PlayerSerializer
+from ballrae_backend.games.models import Player
 
 class PitcherSerializer(serializers.ModelSerializer):
     player = PlayerSerializer(read_only=True)
@@ -40,12 +41,6 @@ class PitcherSerializer(serializers.ModelSerializer):
                 "k/9": k9,
                 "bb/9": bb9,
                 "whip": whip,
-                "era": 0,
-                "fip": 0,
-                "w": 0,
-                "l": 0,
-                "sv": 0,
-                "war": 0
             }
         else: return {}    
 
@@ -86,12 +81,62 @@ class BatterSerializer(serializers.ModelSerializer):
                 "ops": ops,
                 "bb/k": bbk,
                 "isop": isop,
-                "wrc+": 0,
-                "babip": 0,
-                "war": 0
             }
         else: return {}
 
     class Meta:
         model = Batter
         fields = '__all__'
+
+class PitcherSimpleSerializer(serializers.ModelSerializer):
+    player = PlayerSerializer(read_only=True)
+    stats = serializers.SerializerMethodField()
+
+    def get_stats(self, obj):
+        pa = obj.pa or 0
+
+        if pa:
+            inn = obj.innings
+            k = obj.strikeouts
+
+            return {
+                "inn": inn,
+                "k": k
+            }
+        else: return {}    
+
+    class Meta:
+        model = Pitcher
+        fields = ['player', 'stats']
+
+class BatterSimpleSerializer(serializers.ModelSerializer):
+    player = PlayerSerializer(read_only=True)
+    stats = serializers.SerializerMethodField()
+
+    def get_stats(self, obj):
+        ab = obj.ab or 0
+        pa = obj.pa or 0
+        hits = (obj.singles or 0) + (obj.doubles or 0) + (obj.triples or 0) + (obj.homeruns or 0)
+
+        if pa:
+            avg = round(hits / ab, 3) if ab else 0.0
+            slg = round(
+                ((obj.singles or 0) +
+                2 * (obj.doubles or 0) +
+                3 * (obj.triples or 0) +
+                4 * (obj.homeruns or 0)) / ab, 3
+            ) if ab else 0.0
+
+            obp = round((hits + (obj.walks or 0)) / pa, 3) if pa else 0.0
+
+            ops = round(obp + slg, 3)
+
+            return {
+                "avg": avg,
+                "ops": ops,
+            }
+        else: return {}
+
+    class Meta:
+        model = Batter
+        fields = ['player', 'stats']
