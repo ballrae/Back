@@ -103,7 +103,10 @@ class PitcherSimpleSerializer(serializers.ModelSerializer):
                 "inn": inn,
                 "k": k
             }
-        else: return {}    
+        else: return {
+            "inn": 0.0,
+            "k": 0
+        }    
 
     class Meta:
         model = Pitcher
@@ -135,7 +138,10 @@ class BatterSimpleSerializer(serializers.ModelSerializer):
                 "avg": avg,
                 "ops": ops,
             }
-        else: return {}
+        else: return {
+            "avg": 0.0,
+            "ops": 0.0
+        }
 
     class Meta:
         model = Batter
