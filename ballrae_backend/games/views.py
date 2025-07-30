@@ -103,7 +103,7 @@ class GameRelayView(APIView):
 # 선수 조회
 class PlayerView(APIView):
     def get(self, request):
-        players = Player.objects.all()
+        players = Player.objects.all().order_by('player_name')
         msg = "전체 선수"
 
         name = request.query_params.get("name")
