@@ -83,20 +83,30 @@ class PlayerIdView(APIView):
 
 
 class PlayerMainPageView(APIView):
-    def get(self, request, id):
-        try:
-            player = Player.objects.get(id=id)
-            serializer = get_serializer_for_player(player)
+    def get(self, request):
+        players = Player.objects.all().order_by("player_name")
 
-        except Player.DoesNotExist:
-            return Response({
-                "status": "Not Found",
-                "message": "해당하는 선수를 찾을 수 없습니다.",
-                "data": None
-            }, status=status.HTTP_404_NOT_FOUND)
+        data = []
+
+        for player in players:
+            if player.position == "B":
+                try:
+                    batter = Batter.objects.get(player=player)
+                    serializer = BatterSimpleSerializer(batter)
+                    data.append(serializer.data)
+                except Batter.DoesNotExist:
+                    continue  # 기록 없으면 스킵
+
+            elif player.position == "P":
+                try:
+                    pitcher = Pitcher.objects.get(player=player)
+                    serializer = PitcherSimpleSerializer(pitcher)
+                    data.append(serializer.data)
+                except Pitcher.DoesNotExist:
+                    continue
 
         return Response({
             "status": "OK",
-            "message": f"{player.player_name} 선수 정보 조회 성공",
-            "data": serializer.data
+            "message": f"전체 선수({len(data)}명) 정보 조회 성공",
+            "data": data
         }, status=status.HTTP_200_OK)
