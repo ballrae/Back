@@ -4,6 +4,7 @@ from ballrae_backend.games.models import AtBat, Inning, Game, Player
 from .models import Pitcher, Batter
 import json
 from django.db.models import Q
+import requests
 
 cutoff_date = "20250322"
 
@@ -104,3 +105,46 @@ def save_pitcher_transactionally(player: Player):
             "innings": innings,
         }
     )
+
+def get_realtime_batter(pcode):
+    url = f"https://m.sports.naver.com/ajax/player/record?category=kbo&playerId=53764"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        # "Referer": "https://m.sports.naver.com/game/20250503OBSS02025/relay"
+    }
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    direction = json.loads(data['playerEndRecord']['chart'])['direction'] 
+
+    result = {
+        "batter": direction
+    }
+
+    return result
+
+def get_realtime_pitcher(pcode):
+    url = f"https://m.sports.naver.com/ajax/player/record?category=kbo&playerId={pcode}"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        # "Referer": "https://m.sports.naver.com/game/20250503OBSS02025/relay"
+    }
+
+    response = requests.get(url, headers=headers)
+    data = response.json()
+
+    data = json.loads(data['playerEndRecord']['chart'])['pit_kind']['player']
+
+    valid_pitches = [v for v in data.values() if v['pit_rt'] is not None]
+    sorted_pitches = sorted(valid_pitches, key=lambda x: x['pit_rt'], reverse=True)
+    top_3 = sorted_pitches[:3]
+
+    result = {
+        "pitcher": [
+            {"type": p['pit'], "rate": p['pit_rt'], "speed": p['speed']}
+            for p in top_3
+        ],
+    }
+
+    return result
