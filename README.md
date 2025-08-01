@@ -10,6 +10,7 @@ cp .env.example .env
 
 ### 3. Docker 실행 (백엔드 + DB 자동 시작)
 **첫시작**
+docker start
 docker-compose up --build  
 
 **사용**  
