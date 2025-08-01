@@ -6,6 +6,7 @@ from rest_framework import status
 from datetime import datetime
 from .serializers import  BatterSimpleSerializer, PitcherSimpleSerializer, PitcherSerializer, BatterSerializer
 from .models import Batter, Pitcher
+from .services import get_realtime_batter, get_realtime_pitcher
 
 def get_serializer_for_player(player_obj):
     if player_obj.position == "B":
@@ -110,3 +111,23 @@ class PlayerMainPageView(APIView):
             "message": f"전체 선수({len(data)}명) 정보 조회 성공",
             "data": data
         }, status=status.HTTP_200_OK)
+
+class RealTimePlayersView(APIView):
+    def get(self, request):
+        pitcher = request.query_params.get("pitcher")
+        batter = request.query_params.get("batter")
+        
+        p = Player.objects.filter(pcode=pitcher).first()
+        b = Player.objects.filter(pcode=batter).first()
+
+        bat = get_realtime_batter(b.pcode)
+        pit = get_realtime_pitcher(p.pcode)
+
+        return Response({
+            "status": "OK",
+            "message": "실시간 투타 정보",
+            "data": {
+                "batter": bat,
+                "pitcher": pit
+            }
+        })
