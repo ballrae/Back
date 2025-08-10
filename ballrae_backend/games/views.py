@@ -6,6 +6,8 @@ from rest_framework import status
 from .models import Game, Player
 from .serializers import GameSerializer, InningSerializer, GameDateSerializer, PlayerSerializer
 from datetime import datetime
+from ballrae_backend.streaming.redis_client import redis_client
+import json
 
 TEAM_CODE = {
     "HH": "한화",
@@ -59,13 +61,30 @@ class GameListView(APIView):
                 'data': "경기가 없는 날입니다."
             }, status=status.HTTP_200_OK)
 
-# Game 상세 조회
 class GameRelayView(APIView):
     def get(self, request, game_id, inning):
         date = game_id[:8]
         date_obj = datetime.strptime(date, '%Y%m%d').date()
-        today = datetime.today().date()
+        inning = int(inning)  # URL에서 넘어온건 문자열일 수 있음
 
+        # Redis에서 실시간 여부 판단
+        realtime_top_key = f"game:{game_id}:inning:{inning}:top"
+        realtime_bot_key = f"game:{game_id}:inning:{inning}:bot"
+
+        # Redis 캐시가 있으면 실시간 경기로 판단
+        if redis_client.exists(realtime_top_key) and redis_client.exists(realtime_bot_key):
+            top_data = json.loads(redis_client.get(realtime_top_key))
+            bot_data = json.loads(redis_client.get(realtime_bot_key))
+            return Response({
+                'status': 'OK_REALTIME',
+                'message': f'{inning}회 이닝 정보 (실시간)',
+                'data': {
+                    'top': top_data,
+                    'bot': bot_data
+                }
+            }, status=status.HTTP_200_OK)
+
+        # Redis에 없으면 → DB 조회 (과거 경기)
         try:
             game = Game.objects.prefetch_related(
                 'innings__atbats__pitches'
@@ -73,32 +92,21 @@ class GameRelayView(APIView):
         except Game.DoesNotExist:
             return Response({'message': '경기 정보 없음'}, status=status.HTTP_404_NOT_FOUND)
 
-        inning_data = {}
-        # 해당 이닝만 필터링
         inning_objs = game.innings.filter(inning_number=inning)
 
-        print(inning_objs)
         if not inning_objs:
             return Response({'message': f'{inning}회 이닝 정보가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
-        else:
-            inning_data['top'] = InningSerializer(inning_objs[0]).data
-            inning_data['bot'] = InningSerializer(inning_objs[1]).data
+        inning_data = {
+            'top': InningSerializer(inning_objs[0]).data,
+            'bot': InningSerializer(inning_objs[1]).data
+        }
 
-        if date_obj == today:
-            return Response({
-                'status': 'OK_REALTIME',
-                'message': f'{inning}회 이닝 정보 (실시간)',
-                'data': inning_data
-            }, status=status.HTTP_200_OK)
-        elif date_obj < today:
-            return Response({
-                'status': 'OK_ARCHIVED',
-                'message': f'{inning}회 이닝 정보 (과거 경기)',
-                'data': inning_data
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({'message': '예정된 경기입니다.'}, status=status.HTTP_200_OK)
+        return Response({
+            'status': 'OK_ARCHIVED',
+            'message': f'{inning}회 이닝 정보 (과거 경기)',
+            'data': inning_data
+        }, status=status.HTTP_200_OK)
     
 # 선수 조회
 class PlayerView(APIView):

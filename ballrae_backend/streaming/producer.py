@@ -9,11 +9,10 @@ import sys
 import numpy as np
 import argparse
 import os
-import datetime
 import sys
 import concurrent.futures
 import threading
-from datetime import datetime, timedelta
+import datetime
 from django.db.models import Q
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -24,6 +23,7 @@ django.setup()
 
 from ballrae_backend.games import models
 from ballrae_backend.games.services import save_at_bat_transactionally
+from ballrae_backend.streaming.redis_client import redis_client
 
 # 엔트리 저장 변수
 home_entry = None
@@ -44,6 +44,13 @@ TEAM_MAP = {
 
 def team_map(team):
     return TEAM_MAP.get(team, team)
+
+def mark_game_status(game_id: str, status):
+    try:
+        updated = models.Game.objects.filter(id=game_id).update(status=status)
+
+    except Exception as e:
+        print(f"경기 상태 마킹 실패: {status}, {type(e).__name__}: {e}")
 
 # producer 전송 함수
 def produce(topic, result, producer, previous_data):
@@ -206,6 +213,49 @@ def process_pitch_and_events(relay):
         })
 
     return pitch_sequence, "|".join(result_parts), strike_zone
+
+# 실시간 수비위치 저장 함수
+def build_defense_positions_payload(game_id: str, home_team: str, away_team: str,
+                                    home_lineup: dict, away_lineup: dict):
+    def to_dh10(pos):
+        if pos is None:
+            return None
+        s = str(pos).strip()
+        if s.isdigit():
+            return s
+        if s in ("지명타자", "DH", "지타"):
+            return "10"
+        return s
+
+    def get_pcode(obj):
+        return str(obj.get("pcode") or obj.get("pCode") or obj.get("id") or "").strip()
+
+    def extract(lineup):
+        items = []
+
+        # 타자들: 지명타자는 10으로 매핑
+        for b in (lineup.get("batter") or []):
+            pcode = get_pcode(b)
+            pos = b.get("pos") or b.get("posName")
+            pos_code = to_dh10(pos)
+            if pcode and pos_code:
+                items.append({"pcode": pcode, "pos": pos_code})
+
+        # 투수(선발 포함): 무조건 1로
+        for p in (lineup.get("pitcher") or []):
+            pcode = get_pcode(p)
+            if pcode:
+                items.append({"pcode": pcode, "pos": "1"})
+
+        return items
+
+    return {
+        "game_id": game_id,
+        "home_team": home_team,
+        "away_team": away_team,
+        "home": extract(home_lineup),
+        "away": extract(away_lineup),
+    }
 
 # pcode를 통해 name을 찾는 함수
 def find_name_by_pcode(entries, pcode):
@@ -381,7 +431,7 @@ def get_lineup(lineup):
 
 
 # 크롤링 함수
-def crawling(game):
+def crawling(game, use_redis=False):
     global home_entry
     global away_entry
     global home_lineup
@@ -425,6 +475,17 @@ def crawling(game):
 
                 entries = [home_entry, away_entry, home_lineup, away_lineup]
 
+                # redis 사용할때만 defense position 저장
+                if use_redis:
+                    defense_payload = build_defense_positions_payload(
+                        game_id=game_id,
+                        home_team=home,
+                        away_team=away,
+                        home_lineup=home_lineup,
+                        away_lineup=away_lineup,
+                    )
+                    result["defense_positions"] = defense_payload
+
                 merged_entries = create_merged_dict(entries, game_id)
         
             if top:
@@ -445,11 +506,16 @@ def crawling(game):
             
             if game_done == True:
                 result['game_over'] = game_done
+                mark_game_status(game_id, 'done')
                 return result, game_done
 
         except KeyError as e:
             print("경기 시작 전")
             break    
+
+        except TypeError:
+            mark_game_status(game_id, 'cancelled')
+            break
         
         except Exception as e:
             print(f"{game} {inning}회 요청 오류: {e}")
@@ -463,7 +529,7 @@ def crawl_game_loop(game_id, topic, producer):
 
     while True:
         try:
-            result, game_done = crawling(game_id)
+            result, game_done = crawling(game_id, True)
 
             if result:
                 previous_data = produce(topic, result, producer, previous_data)
@@ -484,43 +550,36 @@ def crawl_game_loop(game_id, topic, producer):
         time.sleep(20)
 
 def get_realtime_data():
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--id')
-    # args = parser.parse_args()
-
-    today = datetime.date.today()
+    today = datetime.datetime.today().date()  # 수정된 부분
     game_ids = models.Game.objects.filter(date__date=today).values_list('id', flat=True)
     new_game_id = []
 
     for game in game_ids:
-            date = game[:8]
-            away_team = team_map(game[8:10])
-            home_team = team_map(game[10:12])
+        date = game[:8]
+        away_team = team_map(game[8:10])
+        home_team = team_map(game[10:12])
 
-            dh = game[12]
-            year = game[:4]
+        dh = game[12]
+        year = game[:4]
 
-            game_id = f"{date}{away_team}{home_team}{dh}{year}"
-            new_game_id.append(game_id)
+        game_id = f"{date}{away_team}{home_team}{dh}{year}"
+        new_game_id.append(game_id)
 
     topic = '2025'
 
     producer = KafkaProducer(
         bootstrap_servers='kafka:9092',
-        # bootstrap_servers='localhost:9092',
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
-    
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(crawl_game_loop, game_id, topic, producer) for game_id in new_game_id]
 
-        # 모든 스레드가 끝날 때까지 대기
         for future in concurrent.futures.as_completed(futures):
             try:
                 future.result()
             except Exception as e:
                 print(f"스레드 내부 에러: {e}")
-    
 
 def get_all_game_datas(select_year):
     game_ids = models.Game.objects.filter(
@@ -560,14 +619,14 @@ def get_all_game_datas(select_year):
         if game_done: continue
 
 def get_game_datas(start_date, end_date):
-    start = datetime.strptime(str(start_date), "%Y%m%d")
-    end = datetime.strptime(str(end_date), "%Y%m%d")
+    start = datetime.datetime.strptime(str(start_date), "%Y%m%d")
+    end = datetime.datetime.strptime(str(end_date), "%Y%m%d")
 
     q = Q()
     current = start
     while current <= end:
         q |= Q(id__startswith=str(current.strftime("%Y%m%d")))
-        current += timedelta(days=1)
+        current += datetime.timedelta(days=1)
 
     # 전체 날짜의 game_ids 한꺼번에 조회
     game_ids = models.Game.objects.filter(q).values_list('id', flat=True)
@@ -628,12 +687,12 @@ def test():
 def main():
     print("producer")
     # test()
-    # get_realtime_data()
+    get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
     # get_all_game_datas(2024)
-    get_all_game_datas(2025)
+    # get_all_game_datas(2025)
     # get_game_datas(20250711, 20250720)
 
 if __name__ == "__main__":

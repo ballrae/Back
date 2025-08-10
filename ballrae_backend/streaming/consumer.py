@@ -9,48 +9,90 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")
 django.setup()
 
 from ballrae_backend.games.services import save_at_bat_transactionally
-
-last_full_game_data = []
-
-valid_keys = [f"{i}회초" for i in range(1, 12)] + [f"{i}회말" for i in range(1, 12)]
-
-import json
 from streaming.redis_client import redis_client
 
+DEFAULT_TTL = 24 * 60 * 60  # 하루
+
+# ---- 추가: 메시지 -> Redis 저장 스키마로 정규화 ----
+def normalize_for_redis(msg: dict) -> dict:
+    game_id = msg.get("game_id")
+    inning = msg.get("inning")
+    half = msg.get("half")  # "top" or "bot"
+    atbats = msg.get("at_bats", [])
+
+    payload = {"game_id": game_id}
+    half_block = {
+        "game": game_id,
+        "inning_number": inning,
+        # "id": f"{game_id}:{inning}:{half}",  # 필요하면 사용
+        "atbats": atbats,
+    }
+    # half에 맞는 키로 넣기
+    if half == "top":
+        payload["top"] = half_block
+    elif half == "bot":
+        payload["bot"] = half_block
+    return payload
+
+def _save_half_inning(half_inning, half_key):
+    inning_number = half_inning["inning_number"]
+    game_id = half_inning["game"]
+
+    print(f"🔎 Redis 저장: {game_id} {inning_number}회 {half_key} / atbats {len(half_inning.get('atbats', []))}")
+
+    inning_key = f"game:{game_id}:inning:{inning_number}:{half_key}"
+    redis_client.set(inning_key, json.dumps(half_inning), ex=DEFAULT_TTL)
+    print(f"✅ 저장 완료: {inning_key}")
+    
 def save_relay_to_redis(relay_data: dict):
-    for half_key in ['top', 'bot']:
-        if half_key not in relay_data:
-            continue
+    print(f"Redis 저장 시도: {relay_data.get('game_id')}")
+    try:
+        for half_key in ['top', 'bot']:
+            if half_key not in relay_data:
+                print(f"⚠️ half_key '{half_key}' 없음 → 다음으로 넘어감.")
+                continue
 
-        half_inning = relay_data[half_key]
-        inning_number = half_inning["inning_number"]
-        inning_id = half_inning["id"]
-        game_id = half_inning['game']
+            half_inning = relay_data[half_key]
+            inning_number = half_inning["inning_number"]
+            game_id = half_inning['game']
 
-        # 이닝 전체 저장
-        inning_key = f"game:{game_id}:inning:{inning_number}:{half_key}"
-        redis_client.set(inning_key, json.dumps(half_inning))
+            print(f"🔎 Redis 저장: {game_id} {inning_number}회 {half_key} / atbats {len(half_inning.get('atbats', []))}")
 
-        atbat_ids = []
+            inning_key = f"game:{game_id}:inning:{inning_number}:{half_key}"
+            redis_client.set(inning_key, json.dumps(half_inning), ex=DEFAULT_TTL)
+            print(f"✅ 저장 완료: {inning_key}")
 
-        for atbat in half_inning["atbats"]:
-            atbat_id = atbat["id"]
-            atbat_key = f"game:{game_id}:atbat:{atbat_id}"
-            redis_client.set(atbat_key, json.dumps(atbat))
-            atbat_ids.append(atbat_id)
+    except Exception as e:
+        print(f"❌ Redis 저장 실패: {e}")
 
-            # pitch 저장
-            pitch_ids = []
-            for pitch in atbat["pitches"]:
-                pitch_id = pitch["id"]
-                pitch_key = f"game:{game_id}:pitch:{pitch_id}"
-                redis_client.set(pitch_key, json.dumps(pitch))
-                pitch_ids.append(pitch_id)
+def save_defense_positions_to_redis(payload, ttl=DEFAULT_TTL):
+    game_id   = payload.get("game_id")
+    home_team = payload.get("home_team")
+    away_team = payload.get("away_team")
+    if not game_id or not home_team or not away_team:
+        return
 
-            redis_client.rpush(f"game:{game_id}:atbat:{atbat_id}:pitches", *pitch_ids)
+    def write_team_hash(team_code: str, side_list):
+        # 원하는 키 이름 그대로 사용
+        key = f"defense_position:{game_id}:{team_code}"
 
-        # atbat 리스트 저장
-        redis_client.rpush(f"game:{game_id}:inning:{inning_number}:{half_key}:atbats", *atbat_ids)
+        # pcode -> pos 매핑으로 통으로 덮어쓰기(이전 잔여 데이터 방지)
+        mapping = {str(it["pcode"]): str(it["pos"])
+                   for it in (side_list or [])
+                   if it.get("pcode") and it.get("pos")}
+
+        pipe = redis_client.pipeline()
+        pipe.delete(key)                         # 기존 값 제거(원자적 교체)
+        if mapping:
+            pipe.hset(key, mapping=mapping)      # 해시에 한 번에 입력
+        pipe.expire(key, ttl)                    # TTL 설정
+        pipe.execute()
+
+    write_team_hash(home_team, payload.get("home"))
+    write_team_hash(away_team, payload.get("away"))
+    print(f"✅ 수비 포지션 저장 완료: {game_id} (해시 2개)")
+
+valid_keys = [f"{i}회초" for i in range(1, 12)] + [f"{i}회말" for i in range(1, 12)]
 
 try:
     consumer = KafkaConsumer(
@@ -65,23 +107,15 @@ try:
 
     print("✅ Kafka Consumer 시작. 메시지를 기다립니다...")
 
-    # consumer를 이터레이터로 사용하여 메시지를 하나씩 처리
     for message in consumer:
         print(f"* 받은 메시지: key='{message.key}'")
 
         if message.key in valid_keys:
-            last_full_game_data.append(message.value)
+            payload = normalize_for_redis(message.value)
+            save_relay_to_redis(relay_data=payload)
 
-        # # 'game_over' 키를 가진 메시지를 받으면 DB 저장 로직 실행
-        # elif message.key == "game_over" and message.value is True:            
-        #     if last_full_game_data:
-            for data in last_full_game_data:
-                    # 직전에 저장해둔 경기 데이터를 사용하여 DB에 저장
-                # save_at_bat_transactionally(data)
-                # print("✅ DB 저장 성공!")
-                save_relay_to_redis(relay_data=data)
-        
-        # if message.key == "game_over" and message.value is True: break
+        elif message.key == "defense_positions":
+            save_defense_positions_to_redis(message.value)
 
 except KeyboardInterrupt:
     print("🛑 컨슈머 종료 중...")
