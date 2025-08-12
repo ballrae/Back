@@ -662,6 +662,38 @@ def get_game_datas(start_date, end_date):
 
         if game_done: continue
 
+def realtime_test():
+    today = '20250810'
+    game_ids = models.Game.objects.filter(date__date=today).values_list('id', flat=True)
+    new_game_id = []
+
+    for game in game_ids:
+        date = game[:8]
+        away_team = team_map(game[8:10])
+        home_team = team_map(game[10:12])
+
+        dh = game[12]
+        year = game[:4]
+
+        game_id = f"{date}{away_team}{home_team}{dh}{year}"
+        new_game_id.append(game_id)
+
+    topic = '2025'
+
+    producer = KafkaProducer(
+        bootstrap_servers='kafka:9092',
+        value_serializer=lambda v: json.dumps(v).encode('utf-8')
+    )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(crawl_game_loop, game_id, topic, producer) for game_id in new_game_id]
+
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                future.result()
+            except Exception as e:
+                print(f"스레드 내부 에러: {e}")
+
 def test():
     new_data, game_done = crawling('20250718HHKT02025')
 
@@ -685,9 +717,9 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    print("producer")
     # test()
-    get_realtime_data()
+    realtime_test()
+    # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
