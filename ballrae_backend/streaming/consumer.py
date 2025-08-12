@@ -80,7 +80,9 @@ def save_defense_positions_to_redis(payload, ttl=DEFAULT_TTL):
         mapping = {str(it["pcode"]): str(it["pos"])
                    for it in (side_list or [])
                    if it.get("pcode") and it.get("pos")}
-
+        
+        print(f"[DEBUG] {team_code} mapping: {mapping}")
+        
         pipe = redis_client.pipeline()
         pipe.delete(key)                         # 기존 값 제거(원자적 교체)
         if mapping:
