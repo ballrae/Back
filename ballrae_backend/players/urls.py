@@ -9,5 +9,4 @@ urlpatterns = [
     path('player/id/', PlayerIdView.as_view(), name='player-id-view'),
     path('main/', PlayerMainPageView.as_view(), name='player-mainpage-view'),
     path('realtime/', RealTimePlayersView.as_view(), name='player-realtime-view'),
-    # path('rank/', PlayerMainPageView.as_view(), name='player-ranking-view'),
 ]
