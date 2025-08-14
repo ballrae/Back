@@ -6,53 +6,250 @@ from rest_framework import status
 from datetime import datetime
 from .serializers import  BatterSimpleSerializer, PitcherSimpleSerializer, PitcherSerializer, BatterSerializer
 from .models import Batter, Pitcher
-from .services import get_realtime_batter, get_realtime_pitcher
+from .services import get_realtime_batter, get_realtime_pitcher        
+from django.db.models import F, FloatField, ExpressionWrapper, Case, When, Value
 
 def get_serializer_for_player(player_obj):
     if player_obj.position == "B":
         return BatterSimpleSerializer(Batter.objects.get(player=player_obj))
     elif player_obj.position == "P":
         return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj))
-    
+
 class PitchersView(APIView):
     def get(self, request, id):
+        player = Player.objects.filter(id=id).first()
+        if not player:
+            return Response({
+                'status': 'Not Found',
+                'message': '해당 id의 선수가 존재하지 않습니다.',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
         try:
-            player = Player.objects.filter(id=id).first()
             pitcher = Pitcher.objects.get(player=player)
-            serializer = PitcherSerializer(pitcher)
+        except Pitcher.DoesNotExist:
+            return Response({
+                'status': 'Not Found',
+                'message': '해당 선수는 투수 기록이 없습니다.',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # annotate 지표 계산
+            pitchers = Pitcher.objects.annotate(
+                avg=ExpressionWrapper(
+                    Case(
+                        When(ab=0, then=Value(0)),
+                        default=(F('singles') + F('doubles') + F('triples') + F('homeruns')) * 1.0 / F('ab'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                k9=ExpressionWrapper(
+                    Case(
+                        When(innings=0, then=Value(0)),
+                        default=F('strikeouts') * 9.0 / F('innings'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                bb9=ExpressionWrapper(
+                    Case(
+                        When(innings=0, then=Value(0)),
+                        default=F('walks') * 9.0 / F('innings'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                )
+            )
+
+            annotated_target = pitchers.get(player__id=id)
+
+            def get_percentile(values, target, reverse=False):
+                try:
+                    total = len(values)
+                    if total == 0 or target is None:
+                        return 0
+
+                    values.sort()
+
+                    if reverse:
+                        # 낮을수록 좋은 지표: ERA, BB9, AVG, L 등
+                        greater_count = sum(1 for val in values if val > target)
+                        equal_count = sum(1 for val in values if val == target)
+                        adjusted_rank = greater_count + (equal_count / 2.0)
+                    else:
+                        # 높을수록 좋은 지표: WAR, K9, SO, W 등
+                        less_count = sum(1 for val in values if val < target)
+                        equal_count = sum(1 for val in values if val == target)
+                        adjusted_rank = less_count + (equal_count / 2.0)
+
+                    percentile = round((adjusted_rank / total) * 100, 1)
+                    return percentile
+                except:
+                    return 0
+
+            # percentile 계산할 필드들
+            fields = [
+                ('w', False),
+                ('l', True),
+                ('strikeouts', False),
+                ('era', True),
+                ('war', False),
+                ('avg', True),
+                ('k9', False),
+                ('bb9', True),
+            ]
+            percentile_result = {}
+
+            for field, reverse in fields:
+                values = list(
+                    pitchers.exclude(**{f"{field}__isnull": True}).values_list(field, flat=True)
+                )
+                target_value = getattr(annotated_target, field)
+                percentile_result[f"{field}_percentile"] = get_percentile(values, target_value, reverse=reverse)
+
+            serializer = PitcherSerializer(annotated_target)
+
             return Response({
                 'status': 'OK',
-                'message': '투수 기록 조회 성공',
-                'data': serializer.data
+                'message': '투수 기록 조회 + percentile 계산 성공',
+                'data': {
+                    **serializer.data,
+                    'metrics': percentile_result
+                }
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({
-                'status': 'OK',
-                'message': '투수 기록 조회 성공',
-                'data': "존재하지 않는 투수입니다.",
+                'status': 'Error',
+                'message': '투수 기록 조회 중 오류 발생',
+                'data': None,
                 'error code': str(e)
-            }, status=status.HTTP_200_OK)
-        
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 class BattersView(APIView):
     def get(self, request, id):
+        player = Player.objects.filter(id=id).first()
+        if not player:
+            return Response({
+                'status': 'Not Found',
+                'message': '해당 id의 선수가 존재하지 않습니다.',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
         try:
-            player = Player.objects.filter(id=id).first()
             batter = Batter.objects.get(player=player)
-            serializer = BatterSerializer(batter)
+        except Batter.DoesNotExist:
+            return Response({
+                'status': 'Not Found',
+                'message': '해당 선수는 타자 기록이 없습니다.',
+                'data': None
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # annotate에 0 나누기 방지 처리
+            batters = Batter.objects.annotate(
+                obp=ExpressionWrapper(
+                    Case(
+                        When(pa=0, then=Value(0)),
+                        default=(F('singles') + F('doubles') + F('triples') + F('homeruns') + F('walks')) * 1.0 / F('pa'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                slg=ExpressionWrapper(
+                    Case(
+                        When(ab=0, then=Value(0)),
+                        default=(F('singles') + 2 * F('doubles') + 3 * F('triples') + 4 * F('homeruns')) * 1.0 / F('ab'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                ops=ExpressionWrapper(
+                    Case(
+                        When(ab=0, then=Value(0)),
+                        When(pa=0, then=Value(0)),
+                        default=(
+                            ((F('singles') + F('doubles') + F('triples') + F('homeruns') + F('walks')) * 1.0 / F('pa')) +
+                            ((F('singles') + 2 * F('doubles') + 3 * F('triples') + 4 * F('homeruns')) * 1.0 / F('ab'))
+                        ),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                iso=ExpressionWrapper(
+                    Case(
+                        When(ab=0, then=Value(0)),
+                        default=(
+                            ((F('singles') + 2 * F('doubles') + 3 * F('triples') + 4 * F('homeruns')) * 1.0 / F('ab')) -
+                            ((F('singles') + F('doubles') + F('triples') + F('homeruns')) * 1.0 / F('ab'))
+                        ),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                ),
+                bb_k=ExpressionWrapper(
+                    Case(
+                        When(strikeouts=0, then=Value(0)),
+                        default=F('walks') * 1.0 / F('strikeouts'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
+                )
+            )
+
+            annotated_target = batters.get(player__id=id)
+
+            def get_percentile(values, target):
+                """
+                values: 정렬된 리스트 (오름차순)
+                target: 해당 타자의 값
+                """
+                try:
+                    total = len(values)
+                    if total == 0 or target is None:
+                        return 0
+
+                    # 동점자 처리: 전체 중 target보다 작은 개수 + target과 같은 값의 절반
+                    less_count = sum(1 for val in values if val < target)
+                    equal_count = sum(1 for val in values if val == target)
+                    adjusted_rank = less_count + (equal_count / 2.0)
+
+                    percentile = round((adjusted_rank / total) * 100, 1)
+                    return percentile
+                except Exception:
+                    return 0
+
+            fields = ['war', 'wrc', 'babip', 'obp', 'slg', 'ops', 'iso', 'bb_k', 'homeruns']
+            percentile_result = {}
+
+            for field in fields:
+                values = list(
+                    batters.exclude(**{f"{field}__isnull": True}).values_list(field, flat=True)
+                )
+                values.sort()
+                target_value = getattr(annotated_target, field)
+                percentile_result[f"{field}_percentile"] = get_percentile(values, target_value)
+
+            serializer = BatterSerializer(annotated_target)
+
             return Response({
                 'status': 'OK',
-                'message': '타자 기록 조회 성공',
-                'data': serializer.data
+                'message': '타자 기록 조회 + percentile 계산 성공',
+                'data': {
+                    **serializer.data,
+                    'metrics': percentile_result
+                }
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({
-                'status': 'OK',
-                'message': '타자 기록 조회 성공',
-                'data': "존재하지 않는 타자입니다.",
+                'status': 'Error',
+                'message': '타자 기록 조회 중 오류 발생',
+                'data': None,
                 'error code': str(e)
-            }, status=status.HTTP_200_OK)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class PlayerIdView(APIView):
     def get(self, request):
