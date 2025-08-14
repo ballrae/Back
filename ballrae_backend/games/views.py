@@ -61,39 +61,91 @@ class GameListView(APIView):
                 'data': "경기가 없는 날입니다."
             }, status=status.HTTP_200_OK)
 
+POSITION_MAP = {
+    "1": "투수", "2": "포수", "3": "1루수", "4": "2루수", "5": "3루수",
+    "6": "유격수", "7": "좌익수", "8": "중견수", "9": "우익수", "10": "지명타자",
+}
+
+def _hgetall_str(key: str) -> dict[str, str]:
+    """Redis HGETALL 결과를 모두 str로 표준화 (bytes/str 혼용 안전)."""
+    raw = redis_client.hgetall(key)
+    if not raw:
+        return {}
+    out = {}
+    for k, v in raw.items():
+        if isinstance(k, bytes):
+            k = k.decode()
+        if isinstance(v, bytes):
+            v = v.decode()
+        out[str(k)] = str(v)
+    return out
+
+def _defense_positions_with_names(game_id: str, code) -> dict:
+    """Redis 해시(수비 포지션) -> 이름/포지션명으로 변환해서 반환."""
+
+    key = f"defense_position:{game_id}:{code}"
+
+    def_map = _hgetall_str(key)  # {pcode: "포지션번호"}
+
+    # print(home_map, away_map)
+
+    pcodes = list(set(def_map.keys()))
+    name_map = {
+        str(p["pcode"]): p["player_name"]
+        for p in Player.objects.filter(pcode__in=pcodes).values("pcode", "player_name")
+    }
+
+    def enrich(m: dict[str, str]) -> dict:
+        result = {}
+        for pcode in m.keys():
+            result[POSITION_MAP.get(str(m.get(pcode, "")), str(m.get(pcode, "")))] = name_map.get(pcode, pcode)
+
+        return result
+
+    return enrich(def_map)
+    
+
 class GameRelayView(APIView):
     def get(self, request, game_id, inning):
-        date = game_id[:8]
-        date_obj = datetime.strptime(date, '%Y%m%d').date()
-        inning = int(inning)  # URL에서 넘어온건 문자열일 수 있음
+        inning = int(inning)
 
-        # Redis에서 실시간 여부 판단
-        realtime_top_key = f"game:{game_id}:inning:{inning}:top"
-        realtime_bot_key = f"game:{game_id}:inning:{inning}:bot"
+        top_key = f"game:{game_id}:inning:{inning}:top"
+        bot_key = f"game:{game_id}:inning:{inning}:bot"
 
-        # Redis 캐시가 있으면 실시간 경기로 판단
-        if redis_client.exists(realtime_top_key) and redis_client.exists(realtime_bot_key):
-            top_data = json.loads(redis_client.get(realtime_top_key))
-            bot_data = json.loads(redis_client.get(realtime_bot_key))
+        top_raw = redis_client.get(top_key)
+        bot_raw = redis_client.get(bot_key)
+
+        # Redis에 하나라도 있으면 실시간 응답
+        if top_raw or bot_raw:
+            data = {}
+            if top_raw:
+                data['top'] = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
+            if bot_raw:
+                data['bot'] = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
+
+            away_code = game_id[8:10]
+            home_code = game_id[10:12]
+
+            data['defense_positions'] = {
+                'home_team': home_code,
+                'away_team': away_code,
+                'home': _defense_positions_with_names(game_id, home_code),
+                'away': _defense_positions_with_names(game_id, away_code),
+            }
+
             return Response({
                 'status': 'OK_REALTIME',
                 'message': f'{inning}회 이닝 정보 (실시간)',
-                'data': {
-                    'top': top_data,
-                    'bot': bot_data
-                }
+                'data': data
             }, status=status.HTTP_200_OK)
 
-        # Redis에 없으면 → DB 조회 (과거 경기)
+        # 없으면 DB 조회
         try:
-            game = Game.objects.prefetch_related(
-                'innings__atbats__pitches'
-            ).get(id=game_id)
+            game = Game.objects.prefetch_related('innings__atbats__pitches').get(id=game_id)
         except Game.DoesNotExist:
             return Response({'message': '경기 정보 없음'}, status=status.HTTP_404_NOT_FOUND)
 
         inning_objs = game.innings.filter(inning_number=inning)
-
         if not inning_objs:
             return Response({'message': f'{inning}회 이닝 정보가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
