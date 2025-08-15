@@ -8,6 +8,9 @@ from .serializers import GameSerializer, InningSerializer, GameDateSerializer, P
 from datetime import datetime
 from ballrae_backend.streaming.redis_client import redis_client
 import json
+from django.utils import timezone
+from ballrae_backend.games.models import Game
+import pytz
 
 TEAM_CODE = {
     "HH": "한화",
@@ -22,28 +25,18 @@ TEAM_CODE = {
     "SL": "SSG",
 }
 
-def get_play(at_bats):
-    result = []
-    for a in at_bats:
-        r = {}
-        r['batter'] = a['actual_batter']
-        r['strike_zone'] = a['strike_zone']
-        r['at_bat'] = a['pitch_sequence']
-        r['result'] = a['result']
-        result.append(r)
+def update_game_statuses():
+    # scheduled인데 시작 시간이 지난 경기 → ing
+    kst = timezone.now().astimezone(pytz.timezone('Asia/Seoul'))
+    print(kst)
 
-    return result
-
-def kafka_to_front(data):
-    result = {}
-    result['inning'] = data['inning']
-    result['half'] = data['half']
-    result['play_by_play'] = get_play(data['at_bats'])
-    return result
+    Game.objects.filter(status='scheduled', date__lte=kst).update(status='ing')
 
 # Game 목록 조회
 class GameListView(APIView):
     def get(self, request, date):
+        update_game_statuses()
+
         date_obj = datetime.strptime(date, '%Y%m%d').date()
         try:
             games = Game.objects.filter(date__date=date_obj)
