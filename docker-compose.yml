@@ -58,16 +58,6 @@ services:
     volumes:
       - ./hate-filter-api/app:/app  
 
-  pli-api:
-    build:
-      context: ./pli-api
-      dockerfile: Dockerfile
-    container_name: pli-api
-    ports:
-      - "8002:8002"
-    # restart: always
-    volumes:
-      - ./pli-api/app:/app   # 코드 수정 핫리로드 용(개발 시 편함)
     
   zookeeper:
     image: bitnami/zookeeper:latest
