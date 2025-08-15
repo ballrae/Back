@@ -47,7 +47,7 @@ def team_map(team):
 
 def mark_game_status(game_id: str, status):
     try:
-        updated = models.Game.objects.filter(id=game_id).update(status=status)
+        models.Game.objects.filter(id=game_id).update(status=status)
 
     except Exception as e:
         print(f"경기 상태 마킹 실패: {status}, {type(e).__name__}: {e}")
@@ -510,9 +510,9 @@ def crawling(game, use_redis=False):
                 return result, game_done
 
         except KeyError as e:
-            print("경기 시작 전")
-            break    
-
+            print(f"[{game}] {inning}회 KeyError: {e} → 데이터 누락으로 무시하고 계속 진행")
+            continue  # 무시하고 다음 이닝으로 넘어가기
+        
         except TypeError:
             mark_game_status(game_id, 'cancelled')
             break
