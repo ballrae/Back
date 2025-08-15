@@ -550,8 +550,8 @@ def crawl_game_loop(game_id, topic, producer):
         time.sleep(20)
 
 def get_realtime_data():
-    today = datetime.datetime.today().date()  # 수정된 부분
-    game_ids = models.Game.objects.filter(date__date=today).values_list('id', flat=True)
+    today = datetime.datetime.today().strftime('%Y%m%d')
+    game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)    
     new_game_id = []
 
     for game in game_ids:
