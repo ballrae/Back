@@ -82,7 +82,7 @@ def save_defense_positions_to_redis(payload, ttl=DEFAULT_TTL):
                    if it.get("pcode") and it.get("pos")}
         
         print(f"[DEBUG] {team_code} mapping: {mapping}")
-        
+
         pipe = redis_client.pipeline()
         pipe.delete(key)                         # 기존 값 제거(원자적 교체)
         if mapping:
@@ -118,6 +118,13 @@ try:
 
         elif message.key == "defense_positions":
             save_defense_positions_to_redis(message.value)
+
+        elif message.key == "game_over":
+            game_id = message.value.get("game_id")
+            if game_id:
+                from ballrae_backend.games.models import Game
+                updated = Game.objects.filter(id=game_id).update(status="done")
+                print(f"🏁 경기 종료 처리됨: {game_id} / 업데이트됨: {updated}")
 
 except KeyboardInterrupt:
     print("🛑 컨슈머 종료 중...")
