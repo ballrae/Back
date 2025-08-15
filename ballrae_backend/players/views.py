@@ -60,6 +60,14 @@ class PitchersView(APIView):
                         output_field=FloatField()
                     ),
                     output_field=FloatField()
+                ),
+                whip=ExpressionWrapper(
+                    Case(
+                        When(innings=0, then=Value(0)),
+                        default=(F('walks') + F('singles') + F('doubles') + F('triples') + F('homeruns')) * 1.0 / F('innings'),
+                        output_field=FloatField()
+                    ),
+                    output_field=FloatField()
                 )
             )
 
@@ -99,6 +107,7 @@ class PitchersView(APIView):
                 ('avg', True),
                 ('k9', False),
                 ('bb9', True),
+                ('whip', True),
             ]
             percentile_result = {}
 
