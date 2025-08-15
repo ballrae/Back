@@ -70,7 +70,7 @@ field_map = {
     }
 
 # for year in [2023, 2024, 2025]:
-for year in [2021, 2022]:
+for year in [2025]:
     # 월 단위 크롤링
     for i in range(3, 11):
         print(i, "월")

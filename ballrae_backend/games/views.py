@@ -37,9 +37,8 @@ class GameListView(APIView):
     def get(self, request, date):
         update_game_statuses()
 
-        date_obj = datetime.strptime(date, '%Y%m%d').date()
         try:
-            games = Game.objects.filter(date__date=date_obj)
+            games = Game.objects.filter(id__startswith=date)
             serializer = GameDateSerializer(games, many=True)
             return Response({
                 'status': 'OK',
