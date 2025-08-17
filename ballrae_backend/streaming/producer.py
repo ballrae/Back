@@ -11,7 +11,7 @@ import argparse
 import os
 import sys
 import concurrent.futures
-import threading
+import traceback
 import datetime
 from django.db.models import Q
 
@@ -148,71 +148,99 @@ def process_pitch_and_events(relay):
     strike_zone = None
 
     options = relay.get("textOptions", [])
-    pitch_options = relay.get('ptsOptions')
+
+    # ptsOptions 로딩
+    pitch_options_raw = relay.get('ptsOptions', [])
+    if isinstance(pitch_options_raw, str):
+        try:
+            pitch_options = json.loads(pitch_options_raw)
+            if not isinstance(pitch_options, list):
+                pitch_options = []
+        except json.JSONDecodeError:
+            pitch_options = []
+    elif isinstance(pitch_options_raw, list):
+        pitch_options = pitch_options_raw
+    else:
+        pitch_options = []
 
     temp_pitch_sequence = {}
     event = []
 
-    for opt in options:
-        text = opt.get("text", "")
-        if not text:
-            continue  
+    try:
+        for opt in options:
+            text = opt.get("text", "")
+            if not text:
+                continue
 
-        ball = opt['currentGameState']['ball']
-        strike = opt['currentGameState']['strike']
+            game_state = opt.get("currentGameState", {})
+            ball = game_state.get("ball", 0)
+            strike = game_state.get("strike", 0)
 
-        pitch_id = None
-        points = None
-        temp_strike_zone = None
-        
-        if pitch_options:
-            pitch_id = opt.get('ptsPitchId', [])
-            if pitch_id and pitch_id != '-1':
-                pitch_pts = next((p for p in pitch_options if p["pitchId"] == pitch_id), None)
-                points = [compute_plate_coordinates(pitch_pts)]
-                
-                strike_zone_left = -0.75
-                strike_zone_right = 0.75
-                strike_zone_top = pitch_pts.get('topSz', 3.50725)
-                strike_zone_bottom = pitch_pts.get('bottomSz', 1.60515)
-                temp_strike_zone = [strike_zone_top, strike_zone_bottom, strike_zone_right, strike_zone_left]
-        
-        if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
-            pitch_num += 1
+            pitch_id = None
+            points = None
+            temp_strike_zone = None
 
-            temp_pitch_sequence["pitch_num"] = pitch_num
-            temp_pitch_sequence['pitch_type'] = opt.get('stuff')
-            temp_pitch_sequence['pitch_coordinate'] = points
-            temp_pitch_sequence['speed'] = opt.get('speed')
-            temp_pitch_sequence['count'] = f"{ball}-{strike}"
-            temp_pitch_sequence['pitch_result'] = text.replace(f"{pitch_num}구 ", "")
-            if event:
-                temp_pitch_sequence['event'] = "|".join(event)
-            else:
-                temp_pitch_sequence['event'] = None  # 기본값은 None으로 설정
+            pitch_id = opt.get('ptsPitchId', '')
+            pitch_pts = None
+            if pitch_id and pitch_id != '-1' and isinstance(pitch_id, str) and pitch_options:
+                pitch_pts = next((p for p in pitch_options if str(p.get("pitchId")) == pitch_id), None)
+            
+                if pitch_pts:
+                    points = [compute_plate_coordinates(pitch_pts)]
+                    strike_zone_left = -0.75
+                    strike_zone_right = 0.75
+                    strike_zone_top = pitch_pts.get('topSz', 3.50725)
+                    strike_zone_bottom = pitch_pts.get('bottomSz', 1.60515)
+                    temp_strike_zone = [strike_zone_top, strike_zone_bottom, strike_zone_right, strike_zone_left]
 
-            pitch_sequence.append(temp_pitch_sequence)
+            # 피치 관련 문장
+            if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
+                pitch_num += 1
 
-            temp_pitch_sequence = {}
-            event = []
+                temp_pitch_sequence["pitch_num"] = pitch_num
+                temp_pitch_sequence['pitch_type'] = opt.get('stuff')
+                temp_pitch_sequence['pitch_coordinate'] = points
+                temp_pitch_sequence['speed'] = opt.get('speed')
+                temp_pitch_sequence['count'] = f"{ball}-{strike}"
+                temp_pitch_sequence['pitch_result'] = text.replace(f"{pitch_num}구 ", "")
+                temp_pitch_sequence['event'] = "|".join(event) if event else None
 
-        elif any(keyword in text for keyword in ["투수판 이탈", "체크 스윙", "도루", "비디오 판독", "교체"]):
-            event.append(text)
-            continue
+                pitch_sequence.append(temp_pitch_sequence)
 
-        elif ":" in text and "타자" not in text:
-            result_parts.append(text)
+                temp_pitch_sequence = {}
+                event = []
 
-        if temp_strike_zone is not None and strike_zone is None:
-            strike_zone = temp_strike_zone
-        
-    if event!=[]:
-        pitch_sequence.append({
-            "pitch_num": pitch_num+1,
-            "event": event
-        })
+                if temp_strike_zone is not None and strike_zone is None:
+                    strike_zone = temp_strike_zone
 
-    return pitch_sequence, "|".join(result_parts), strike_zone
+            # 이벤트 처리: 대타
+            elif any(keyword in text for keyword in ["대타"]):
+                result_parts.append(text)
+
+            # 이벤트 처리: 투수 교체 포함
+            elif any(keyword in text for keyword in ["투수판 이탈", "체크 스윙", "도루", "비디오 판독", "교체"]):
+                event.append(text)
+
+            # 결과 파트
+            elif ":" in text and "타자" not in text:
+                result_parts.append(text)
+
+        # 루프 끝나고 남은 event도 pitch_sequence에 기록
+        if event:
+            pitch_sequence.append({
+                "pitch_num": pitch_num + 1,
+                "event": event
+            })
+
+        return pitch_sequence, "|".join(result_parts), strike_zone
+
+    except Exception as e:
+        print("에러 발생 위치: process_pitch_and_events")
+        print("relay:", json.dumps(relay, indent=2, ensure_ascii=False))
+        print("예외 타입:", type(e).__name__)
+        print("예외 내용:", e)
+        traceback.print_exc()
+        raise
 
 # 실시간 수비위치 저장 함수
 def build_defense_positions_payload(game_id: str, home_team: str, away_team: str,
@@ -343,8 +371,11 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
                 at_bats[idx]["pitch_sequence"].extend(pitch_sequence)
             else:
                 at_bats[idx]["pitch_sequence"] = pitch_sequence
-            if result:
-                at_bats[idx]["full_result"] = (at_bats[idx].get("full_result", "") + f"|{result}").strip("|")
+
+            if result and result not in at_bats[idx]["full_result"]:
+                at_bats[idx]["full_result"] += f"|{result}"
+                at_bats[idx]["full_result"] = at_bats[idx]["full_result"].strip("|")
+
         else:
             new_atbat = {
                 "inning": inning,
@@ -440,42 +471,47 @@ def crawling(game, use_redis=False):
 
     result = {}
     game_done = False
-    # result['game_over'] = game_done
 
     away = team_map(game[8:10])
     home = team_map(game[10:12])
-
     game_id = f'{game[:8]}{away}{home}{game[12:]}'
-
     result['game_id'] = game_id
-
     merged_entries = {}
 
     for inning in range(1, 12):
         url = f"https://api-gw.sports.naver.com/schedule/games/{game}/relay?inning={inning}"
         headers = {"User-Agent": "Mozilla/5.0", "Referer": url}
+
         try:
             res = requests.get(url, headers=headers)
             data = res.json()
-            
-            if "result" not in data or "textRelayData" not in data["result"]:
-                raise KeyError("'result' or 'textRelayData' not found")
-        
-            relays = data["result"]["textRelayData"]["textRelays"]
-            top, bot, game_done = split_half_inning_relays(relays, inning)
-            home_lineup = data["result"]["textRelayData"]['homeLineup']
-            away_lineup = data["result"]["textRelayData"]['awayLineup']
-            
+
+            try:
+                relays = data["result"]["textRelayData"]["textRelays"]
+            except Exception as e:
+                print(f"[{game}] {inning}회 Error: textRelays 누락 → 경기 시작 전")
+                return None, False  # 경기 시작 전이므로 종료 아님          
+
+            try:
+                home_lineup = data["result"]["textRelayData"]['homeLineup']
+                away_lineup = data["result"]["textRelayData"]['awayLineup']
+            except KeyError as e:
+                print(f"[{game}] {inning}회 KeyError: home/away 라인업 누락 → {e}")
+                raise
+
             result['home_lineup'] = get_lineup(home_lineup)
             result['away_lineup'] = get_lineup(away_lineup)
-            
+
             if inning == 1:
-                home_entry = data["result"]["textRelayData"]['homeEntry']
-                away_entry = data["result"]["textRelayData"]['awayEntry']
+                try:
+                    home_entry = data["result"]["textRelayData"]['homeEntry']
+                    away_entry = data["result"]["textRelayData"]['awayEntry']
+                except KeyError as e:
+                    print(f"[{game}] {inning}회 KeyError: 엔트리 누락 → {e}")
+                    raise
 
                 entries = [home_entry, away_entry, home_lineup, away_lineup]
 
-                # redis 사용할때만 defense position 저장
                 if use_redis:
                     defense_payload = build_defense_positions_payload(
                         game_id=game_id,
@@ -487,7 +523,13 @@ def crawling(game, use_redis=False):
                     result["defense_positions"] = defense_payload
 
                 merged_entries = create_merged_dict(entries, game_id)
-        
+
+            try:
+                top, bot, game_done = split_half_inning_relays(relays, inning)
+            except Exception as e:
+                print(f"[{game}] {inning}회 split_half_inning_relays 실패 → {e}")
+                raise
+
             if top:
                 key = f"{inning}회초"
                 result[key] = {
@@ -503,22 +545,24 @@ def crawling(game, use_redis=False):
                     "inning": inning, "half": "bot", "team": home,
                     "at_bats": extract_at_bats(bot, inning, "bot", merged_entries)
                 }
-            
-            if game_done == True:
+
+            if game_done is True:
                 result['game_over'] = game_done
                 mark_game_status(game_id, 'done')
                 return result, game_done
 
         except KeyError as e:
-            print(f"[{game}] {inning}회 KeyError: {e} → 데이터 누락으로 무시하고 계속 진행")
-            continue  # 무시하고 다음 이닝으로 넘어가기
-        
+            missing_key = e.args[0] if e.args else '키 없음'
+            print(f"[{game}] {inning}회 KeyError: 누락된 키 → {repr(missing_key)}")
+            continue
+
         except TypeError:
+            print(f"[{game}] {inning}회 TypeError: 경기 취소 처리")
             mark_game_status(game_id, 'cancelled')
             break
-        
+
         except Exception as e:
-            print(f"{game} {inning}회 요청 오류: {e}")
+            print(f"[{game}] {inning}회 요청 오류 (Exception): {e}")
             continue
 
     return result, game_done
@@ -533,8 +577,11 @@ def crawl_game_loop(game_id, topic, producer):
 
             if result:
                 previous_data = produce(topic, result, producer, previous_data)
-            else:
-                print(f"[{game_id}] 새 데이터 없음")
+            
+            elif result is None:
+                print(f"[{game_id}] 아직 경기 시작 전. 1시간 대기 후 재시도")
+                time.sleep(3600)  # 1시간 대기
+                continue
 
             if game_done:
                 print(f"[{game_id}] 경기 종료. 스레드 종료")
@@ -663,9 +710,11 @@ def get_game_datas(start_date, end_date):
         if game_done: continue
 
 def realtime_test():
-    today = '20250810'
-    game_ids = models.Game.objects.filter(date__date=today).values_list('id', flat=True)
+    today = '20250815'
+    # game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
+
+    game_ids = ['20250815HHNC02025']
 
     for game in game_ids:
         date = game[:8]
@@ -695,7 +744,7 @@ def realtime_test():
                 print(f"스레드 내부 에러: {e}")
 
 def test():
-    new_data, game_done = crawling('20250718HHKT02025')
+    new_data, game_done = crawling('20250815HHNC02025')
 
     if new_data:
         for key in new_data.keys():
