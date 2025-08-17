@@ -402,6 +402,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
 
         # main_result 추출
         actual_batter_name = merged_dict[actual_batter]
+
         if result and actual_batter_name and result.startswith(actual_batter_name):
             split_parts = result.split("|")
             main_play = ""
@@ -532,18 +533,20 @@ def crawling(game, use_redis=False):
 
             if top:
                 key = f"{inning}회초"
+                at_bats = extract_at_bats(top, inning, "top", merged_entries)
                 result[key] = {
                     "game_id": game_id,
                     "inning": inning, "half": "top", "team": away,
-                    "at_bats": extract_at_bats(top, inning, "top", merged_entries)
+                    "at_bats": at_bats
                 }
 
             if bot:
                 key = f"{inning}회말"
+                at_bats = extract_at_bats(bot, inning, "bot", merged_entries)
                 result[key] = {
                     "game_id": game_id,
                     "inning": inning, "half": "bot", "team": home,
-                    "at_bats": extract_at_bats(bot, inning, "bot", merged_entries)
+                    "at_bats": at_bats
                 }
 
             if game_done is True:
@@ -553,6 +556,7 @@ def crawling(game, use_redis=False):
 
         except KeyError as e:
             missing_key = e.args[0] if e.args else '키 없음'
+            print(key)
             print(f"[{game}] {inning}회 KeyError: 누락된 키 → {repr(missing_key)}")
             continue
 
