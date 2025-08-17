@@ -329,28 +329,6 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             # actual_batter = merged_dict.get(actual_batter)
             bat_order = batter_info.get("batOrder", bat_order)
 
-            # 교체 상황 파싱
-            match = re.search(r"(\d+)번타자\s+(\S+)\s+:\s+대타\s+(\S+)", text)
-            if match:
-                bat_order = int(match.group(1))
-                original_batter = merged_dict.get(match.group(2), '')
-                actual_batter = merged_dict.get(match.group(3), '')
-                pending_sub = {
-                    "inning": inning,
-                    "half": half,
-                    "pitcher": pitcher,
-                    "bat_order": bat_order,
-                    "original_batter": original_batter,
-                    "actual_batter": actual_batter,
-                    "out": out,
-                    "score": score,
-                    "on_base": None,
-                    "strike_zone": None,
-                    "appearance_number": 0,
-                    "full_result": text,
-                    "pitch_sequence": None
-                }
-
         # appearance number 계산
         merge_key = (inning, half, bat_order, actual_batter)
         appearance_counter[merge_key] += 1
@@ -556,7 +534,6 @@ def crawling(game, use_redis=False):
 
         except KeyError as e:
             missing_key = e.args[0] if e.args else '키 없음'
-            print(key)
             print(f"[{game}] {inning}회 KeyError: 누락된 키 → {repr(missing_key)}")
             continue
 
@@ -771,8 +748,8 @@ def test():
 
 def main():
     # test()
-    # realtime_test()
-    get_realtime_data()
+    realtime_test()
+    # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
