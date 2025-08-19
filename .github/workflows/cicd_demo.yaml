@@ -1,62 +1,92 @@
-name: Django CI/CD Pipeline
-
+name: Deploy via ECR to EC2
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
-  AWS_REGION: us-east-2   # 리전
-  ECR_REPOSITORY: ballrae-demo    # ecr 리포지토리 이름
-  ECR_REPOSITORY_BACKEND: ballrae-backend
-  ECR_REPOSITORY_HATE: ballrae-hate-filter-api
-  ECR_REPOSITORY_PLI: ballrae-pli-api
-  EC2_HOST: ${{ secrets.EC2_HOST }}
-  EC2_USER: ${{ secrets.EC2_USER }}
-  SSH_KEY: ${{ secrets.SSH_KEY }}
+  AWS_REGION: ap-northeast-2
+  ECR_BACKEND: ballrae-backend         # ECR 리포지토리명
+  ECR_HATE: hate-filter-api            # (있으면) ECR 리포지토리명
 
 jobs:
-  build_and_deploy:
+  build-and-push:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and Push Docker Image
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-      
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
         with:
-          host: ${{ env.EC2_HOST }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.SSH_KEY }}
+          context: .
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:latest
+            ${{ steps.ecr.outputs.registry }}/${{ env.ECR_BACKEND }}:git-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # (옵션) hate-filter-api가 같은 레포 하위 폴더에 있다면 켜기
+      # - name: Build & push hate-filter-api
+      #   uses: docker/build-push-action@v6
+      #   with:
+      #     context: ./hate-filter-api
+      #     push: true
+      #     tags: |
+      #       ${{ steps.ecr.outputs.registry }}/${{ env.ECR_HATE }}:latest
+      #       ${{ steps.ecr.outputs.registry }}/${{ env.ECR_HATE }}:git-${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy (compose로 필요한 서비스만)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # 기존 도커 컨테이너 중단 및 삭제
-            docker stop my-django-app || true
-            docker rm my-django-app || true
-            
-            # ECR 로그인
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
-            
-            # 새 도커 이미지 다운로드 및 컨테이너 실행
-            docker pull ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            docker run -d --name ballrae-backend -p 8000:8000 ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            set -e
+            cd ~/Back   # compose 있는 디렉토리로 이동 (환경에 맞게 바꿔주세요)
+
+            # --- AWS CLI 없으면 설치 (1회만) ---
+            if ! command -v aws >/dev/null 2>&1; then
+              curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+              sudo apt-get update -y && sudo apt-get install -y unzip
+              unzip -o awscliv2.zip
+              sudo ./aws/install
+              aws --version
+            fi
+
+            # --- ECR 로그인 (비대화형) ---
+            REGISTRY="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+              | sudo docker login --username AWS --password-stdin "$REGISTRY"
+
+            # --- 필요한 서비스만 갱신 (예: web, db, hate) ---
+            sudo docker compose pull web hate || true
+            # db 이미지는 퍼블릭이면 pull 생략해도 됨
+
+            # 변한 컨테이너만 재생성 (전부가 아니라 필요한 것만!)
+            sudo docker compose up -d --force-recreate --no-deps web hate
+
+            # 마이그레이션 & 정적파일
+            sudo docker compose exec -T web python manage.py migrate --noinput
+            sudo docker compose exec -T web python manage.py collectstatic --noinput
+
+            # 청소
+            sudo docker image prune -f

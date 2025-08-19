@@ -225,6 +225,10 @@ def process_pitch_and_events(relay):
             elif any(keyword in text for keyword in ["투수판 이탈", "체크 스윙", "도루", "비디오 판독", "교체"]):
                 event.append(text)
 
+            # 이벤트 처리: 체크스윙
+            elif any(keyword in text for keyword in ["체크스윙"]):
+                event.append(text)
+
             # 결과 파트
             elif ":" in text and "타자" not in text:
                 result_parts.append(text)
@@ -267,9 +271,12 @@ def build_defense_positions_payload(game_id: str, home_team: str, away_team: str
             return None
         s = str(pos).strip()
         if s.isdigit():
+            # 숫자 코드는 그대로 사용 ("11"도 그대로 대주자 코드로 인식)
             return s
         if s in ("지명타자", "DH", "지타"):
             return "10"
+        if s in ("대주자") or s.upper() == "PR":
+            return "11"
         return s
 
     def get_pcode(obj):
@@ -397,6 +404,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
 
         # main_result 추출
         actual_batter_name = merged_dict[actual_batter]
+        print(actual_batter_name)
 
         if result and actual_batter_name and result.startswith(actual_batter_name):
             split_parts = result.split("|")
@@ -427,6 +435,33 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
                     event_texts = [p["event"] for p in ab["pitch_sequence"] if p["event"]]
                     ab["full_result"] = "|".join(event_texts)
             
+    # full_result 정리: main_result와 동일한 의미의 항목(타자명 접두 제거 후 동일)은 제외
+    for ab in at_bats:
+        main_result_value = ab.get("main_result")
+        full_result_value = ab.get("full_result")
+        actual_batter_pcode = ab.get("actual_batter")
+        actual_batter_name = merged_dict.get(actual_batter_pcode)
+
+        if isinstance(full_result_value, str) and full_result_value:
+            cleaned_parts = []
+            for raw_part in full_result_value.split("|"):
+                part = raw_part.strip()
+                if not part:
+                    continue
+
+                # 타자 이름 접두부 제거 후 비교
+                normalized_part = part
+                if actual_batter_name:
+                    normalized_part = re.sub(rf"^{re.escape(actual_batter_name)}\s*:\s*", "", part)
+
+                if main_result_value and normalized_part.strip() == str(main_result_value).strip():
+                    # main_result와 동일 의미의 항목은 제외
+                    continue
+
+                cleaned_parts.append(part)
+
+            ab["full_result"] = "|".join(cleaned_parts).strip() if cleaned_parts else None
+
     return at_bats
 
 def create_merged_dict(entries, game_id):
@@ -787,9 +822,9 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    # test()
+    test()
     # realtime_test()
-    get_realtime_data()
+    # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
