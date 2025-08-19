@@ -25,6 +25,39 @@ TEAM_CODE = {
     "SL": "SSG",
 }
 
+def get_player_map(pcode):
+    player = Player.objects.filter(pcode=pcode).first()
+    result = {
+                "id": player.id,
+                "pcode": player.pcode,
+                "player_name": player.player_name
+            }
+    return result
+
+def enrich_atbats_with_players(inning_data: dict) -> dict:
+    """Redis에서 불러온 at_bats에 player 이름/ID 붙이기."""
+    at_bats = inning_data.get("atbats", [])
+    player_map = {}
+
+    for ab in at_bats:
+        actual_batter = ab.get("actual_batter")
+        original_batter = ab.get("original_batter")
+        pitcher = ab.get("pitcher")
+
+        if actual_batter:
+            player_map['actual_batter'] = get_player_map(actual_batter)
+            ab["actual_batter"] = player_map['actual_batter']
+
+        if original_batter:
+            player_map['original_batter'] = get_player_map(original_batter)
+            ab["original_batter"] = player_map['original_batter']
+
+        if pitcher:
+            player_map['pitcher'] = get_player_map(pitcher)    
+            ab["pitcher"] = player_map['pitcher']
+
+    return inning_data
+
 def update_game_statuses():
     # scheduled인데 시작 시간이 지난 경기 → ing
     kst = timezone.now().astimezone(pytz.timezone('Asia/Seoul'))
@@ -124,6 +157,10 @@ class GameRelayView(APIView):
                 'home': _defense_positions_with_names(game_id, home_code),
                 'away': _defense_positions_with_names(game_id, away_code),
             }
+
+            # 선수 이름 반영
+            data['top'] = enrich_atbats_with_players(data['top'])
+            data['bot'] = enrich_atbats_with_players(data['bot'])
 
             return Response({
                 'status': 'OK_REALTIME',
