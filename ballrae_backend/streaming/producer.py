@@ -193,8 +193,12 @@ def process_pitch_and_events(relay):
                     strike_zone_bottom = pitch_pts.get('bottomSz', 1.60515)
                     temp_strike_zone = [strike_zone_top, strike_zone_bottom, strike_zone_right, strike_zone_left]
 
+            if "실책" in text:
+                result_parts.append(text)
+                continue
+
             # 피치 관련 문장
-            if "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
+            elif "구" in text and any(kw in text for kw in ["볼", "스트라이크", "파울", "헛스윙", "타격"]) and not any(kw in text for kw in ["아웃", "안타", '2루타', '3루타', '홈런']):
                 pitch_num += 1
 
                 temp_pitch_sequence["pitch_num"] = pitch_num
@@ -231,6 +235,19 @@ def process_pitch_and_events(relay):
                 "pitch_num": pitch_num + 1,
                 "event": event
             })
+
+        if not result_parts:
+            event_texts = []
+
+            for p in pitch_sequence:
+                event = p.get("event")
+                if event:
+                    if isinstance(event, list):
+                        event_texts.extend([e for e in event if "아웃" in e])
+                    elif isinstance(event, str) and "아웃" in event:
+                        event_texts.append(event)
+            if event_texts:
+                result_parts = event_texts
 
         return pitch_sequence, "|".join(result_parts), strike_zone
 
@@ -392,6 +409,24 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             if len(split_parts) > 1:
                 at_bats[idx]["full_result"] = "|".join(split_parts[1:]).strip()
 
+
+        # 마지막 타석인지 판단하고 full_result 수정
+        for i, ab in enumerate(at_bats):
+            # full_result가 진행 중이고 event만 있을 경우
+            if ab["full_result"] == "(진행 중)" and ab["pitch_sequence"]:
+                only_event = all(p.get("pitch_result") is None and p.get("event") for p in ab["pitch_sequence"])
+                
+                if only_event:
+                    is_last = (i == len(at_bats) - 1)  # 마지막 타석인지 체크
+
+                    # 마지막 타석이면 유지
+                    if is_last:
+                        continue
+
+                    # 다음 타석이 존재하면, event 내용을 full_result에 반영
+                    event_texts = [p["event"] for p in ab["pitch_sequence"] if p["event"]]
+                    ab["full_result"] = "|".join(event_texts)
+            
     return at_bats
 
 def create_merged_dict(entries, game_id):
@@ -438,7 +473,6 @@ def get_lineup(lineup):
         result['pitcher'] = {'position': 'pitcher', 'name': p['name']}
 
     return result
-
 
 # 크롤링 함수
 def crawling(game, use_redis=False):
@@ -725,7 +759,7 @@ def realtime_test():
                 print(f"스레드 내부 에러: {e}")
 
 def test():
-    new_data, game_done = crawling('20250815HHNC02025')
+    new_data, game_done = crawling('20250411SSKT02025')
 
     if new_data:
         for key in new_data.keys():
@@ -747,9 +781,9 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    # test()
+    test()
     # realtime_test()
-    get_realtime_data()
+    # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
