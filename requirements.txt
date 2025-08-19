@@ -18,4 +18,3 @@ channels
 celery
 redis
 httpx
-pytz
