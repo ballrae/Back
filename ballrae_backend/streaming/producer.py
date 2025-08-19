@@ -729,7 +729,7 @@ def realtime_test():
     # game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
 
-    game_ids = ['20250815HHNC02025']
+    game_ids = ['20250815KADS02025']
 
     for game in game_ids:
         date = game[:8]
@@ -781,8 +781,8 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    test()
-    # realtime_test()
+    # test()
+    realtime_test()
     # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
