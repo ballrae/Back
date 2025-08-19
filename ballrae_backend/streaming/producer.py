@@ -402,20 +402,41 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
             current_at_bat_key = pitch_merge_key
 
-        # main_result 추출
-        actual_batter_name = merged_dict[actual_batter]
-        print(actual_batter_name)
+        # main_result 추출 (배터 결과를 어디서든 찾아 추출, '대타 ...'와 배터 라인은 full_result에서 제거)
+        actual_batter_name = merged_dict.get(actual_batter)
 
-        if result and actual_batter_name and result.startswith(actual_batter_name):
-            split_parts = result.split("|")
-            main_play = ""
-            if split_parts:
-                for s in split_parts:
-                    if s.startswith(actual_batter_name): main_play = s.split(': ')[1]
+        if result and actual_batter_name:
+            split_parts = [p.strip() for p in result.split("|") if p.strip()]
+            main_play = None
+            remaining_parts = []
+
+            for s in split_parts:
+                # 모든 대타 문구는 full_result에서 제외 (단독 문구만)
+                if s.startswith("대타"):
+                    continue
+
+                if actual_batter_name in s:
+                    # "타자명 : 내용"에서 내용만 추출 (콜론 뒤 부분)
+                    match = re.search(rf"^{re.escape(actual_batter_name)}\s*:\s*(.+)$", s)
+                    if match:
+                        content = match.group(1).strip()
+                        # 교체 문구(대타 포함)는 main_result로 사용하지 않고 full_result에 유지
+                        if "대타" in content:
+                            remaining_parts.append(s)
+                            continue
+                        # 실제 결과만 main_result로 반영하고 full_result에서는 제거
+                        main_play = content
+                        continue
+                    # 콜론 형태가 아니면 유지
+                    remaining_parts.append(s)
+                    continue
+
+                remaining_parts.append(s)
+
             idx = pitch_merge_tracker[pitch_merge_key]
-            at_bats[idx]["main_result"] = main_play
-            if len(split_parts) > 1:
-                at_bats[idx]["full_result"] = "|".join(split_parts[1:]).strip()
+            if main_play is not None:
+                at_bats[idx]["main_result"] = main_play
+            at_bats[idx]["full_result"] = "|".join(remaining_parts).strip() if remaining_parts else None
 
 
         # 마지막 타석인지 판단하고 full_result 수정
