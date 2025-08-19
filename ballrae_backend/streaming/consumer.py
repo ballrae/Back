@@ -49,7 +49,7 @@ def save_relay_to_redis(relay_data: dict):
     try:
         for half_key in ['top', 'bot']:
             if half_key not in relay_data:
-                print(f"⚠️ half_key '{half_key}' 없음 → 다음으로 넘어감.")
+                # print(f"⚠️ half_key '{half_key}' 없음 → 다음으로 넘어감.")
                 continue
 
             half_inning = relay_data[half_key]

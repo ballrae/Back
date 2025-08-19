@@ -584,6 +584,7 @@ def crawling(game, use_redis=False):
 
 def crawl_game_loop(game_id, topic, producer):
     previous_data = None
+    ing_marked = False
     print(f"[{game_id}] 실시간 크롤링 시작")
 
     while True:
@@ -591,6 +592,11 @@ def crawl_game_loop(game_id, topic, producer):
             result, game_done = crawling(game_id, True)
 
             if result:
+                if not game_done and not ing_marked:
+                    # 실시간 진행 중 상태 반영 (한 번만 업데이트) - 크롤링 결과의 정규화된 game_id 사용
+                    normalized_game_id = result.get('game_id', game_id)
+                    mark_game_status(normalized_game_id, 'ing')
+                    ing_marked = True
                 previous_data = produce(topic, result, producer, previous_data)
             
             elif result is None:
@@ -782,8 +788,8 @@ def test():
 
 def main():
     # test()
-    realtime_test()
-    # get_realtime_data()
+    # realtime_test()
+    get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
