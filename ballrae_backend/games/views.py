@@ -145,8 +145,11 @@ class GameRelayView(APIView):
             data = {}
             if top_raw:
                 data['top'] = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
+                data['top'] = enrich_atbats_with_players(data['top'])
+
             if bot_raw:
                 data['bot'] = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
+                data['bot'] = enrich_atbats_with_players(data['bot'])
 
             away_code = game_id[8:10]
             home_code = game_id[10:12]
@@ -157,10 +160,6 @@ class GameRelayView(APIView):
                 'home': _defense_positions_with_names(game_id, home_code),
                 'away': _defense_positions_with_names(game_id, away_code),
             }
-
-            # 선수 이름 반영
-            data['top'] = enrich_atbats_with_players(data['top'])
-            data['bot'] = enrich_atbats_with_players(data['bot'])
 
             return Response({
                 'status': 'OK_REALTIME',

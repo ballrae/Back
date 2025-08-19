@@ -595,13 +595,13 @@ def crawl_game_loop(game_id, topic, producer):
                 if not game_done and not ing_marked:
                     # 실시간 진행 중 상태 반영 (한 번만 업데이트) - 크롤링 결과의 정규화된 game_id 사용
                     normalized_game_id = result.get('game_id', game_id)
-                    mark_game_status(normalized_game_id, 'ing')
+                    mark_game_status(normalized_game_id, 'live')
                     ing_marked = True
                 previous_data = produce(topic, result, producer, previous_data)
             
             elif result is None:
-                print(f"[{game_id}] 아직 경기 시작 전. 1시간 대기 후 재시도")
-                time.sleep(3600)  # 1시간 대기
+                print(f"[{game_id}] 아직 경기 시작 전. 10분 대기 후 재시도")
+                time.sleep(600)  # 1시간 대기
                 continue
 
             if game_done:
