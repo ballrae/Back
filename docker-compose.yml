@@ -25,26 +25,26 @@ services:
     depends_on:
       - db
 
-  celery:
-    build: .
-    container_name: ballrae-celery
-    command: celery -A ballrae_backend worker --loglevel=info
-    working_dir: /app
-    volumes:
-      - .:/app
-    depends_on:
-      - web
-      - redis
-    env_file:
-      - .env
-    restart: always
+  # celery:
+  #   build: .
+  #   container_name: ballrae-celery
+  #   command: celery -A ballrae_backend worker --loglevel=info
+  #   working_dir: /app
+  #   volumes:
+  #     - .:/app
+  #   depends_on:
+  #     - web
+  #     - redis
+  #   env_file:
+  #     - .env
+  #   restart: always
 
   redis:
     image: redis:7
     container_name: ballrae-redis
     ports:
       - "6379:6379"
-    restart: always
+    restart: no
 
 
   hate-filter-api:
@@ -65,7 +65,7 @@ services:
     container_name: pli-api
     ports:
       - "8002:8002"
-    # restart: always
+    restart: no
     volumes:
       - ./pli-api/app:/app   # 코드 수정 핫리로드 용(개발 시 편함)
     
@@ -74,6 +74,7 @@ services:
     container_name: ballrae-zookeeper
     ports:
       - "2181:2181"
+    restart: no
     environment:
       ALLOW_ANONYMOUS_LOGIN: "yes"
 
@@ -88,6 +89,7 @@ services:
       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       ALLOW_PLAINTEXT_LISTENER: "yes"
       KAFKA_LOG4J_LOGLEVEL: INFO
+    restart: no
     depends_on:
       - zookeeper
     volumes:
@@ -105,7 +107,7 @@ services:
     volumes:
       - .:/app
     # # kafka가 실행안되면 broker unavailable뜨니까~
-    # restart: on-failure
+    restart: no
     working_dir: /app
   
   kafka-producer:
@@ -119,13 +121,13 @@ services:
       - .env
     volumes:
       - .:/app
-    # restart: on-failure
+    restart: no
     working_dir: /app
   
   airflow-webserver:
     container_name: ballrae-airflow-webserver
     image: apache/airflow:2.9.1
-    restart: always
+    restart: no
     depends_on:
       - airflow-scheduler
       - airflow-postgres
@@ -141,7 +143,7 @@ services:
   airflow-scheduler:
     container_name: ballrae-airflow-scheduler
     image: apache/airflow:2.9.1
-    restart: always
+    restart: no
     depends_on:
       - airflow-postgres
     environment:
@@ -158,6 +160,7 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    restart: no
     volumes:
       - airflow_db:/var/lib/postgresql/data
 
