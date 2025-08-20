@@ -91,10 +91,10 @@ jobs:
             # db 이미지는 퍼블릭이면 pull 생략해도 됨
 
             # db는 먼저 보장해서 올리고
-            sudo docker compose up -d "$ECR_DATABASE"
+            sudo docker compose up -d db
 
             # 앱 컨테이너들만 재생성 (전부가 아니라 필요한 것만)
-            sudo docker compose up -d --force-recreate --no-dep web db hate-filter-api
+            sudo docker compose up -d --force-recreate --no-dep web hate-filter-api
 
             # 마이그레이션 & 정적파일
             sudo docker compose exec -T web python manage.py migrate --noinput
