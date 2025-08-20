@@ -16,12 +16,35 @@ def get_serializer_for_player(player_obj):
         return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj))
 
 class PitchersView(APIView):
-    def get(self, request, id):
-        player = Player.objects.filter(id=id).first()
+    def get(self, request, id=None):
+        # 지원: path param id, query param id, query param pcode
+        id_param = id if id is not None else request.query_params.get('id')
+        pcode_param = request.query_params.get('pcode')
+
+        player = None
+        if id_param is not None:
+            try:
+                player_id = int(id_param)
+            except (TypeError, ValueError):
+                return Response({
+                    'status': 'Bad Request',
+                    'message': '유효한 id를 입력해주세요.',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            player = Player.objects.filter(id=player_id).first()
+        elif pcode_param:
+            player = Player.objects.filter(pcode=pcode_param).first()
+        else:
+            return Response({
+                'status': 'Bad Request',
+                'message': 'id 또는 pcode를 쿼리 파라미터로 입력해주세요.',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         if not player:
             return Response({
                 'status': 'Not Found',
-                'message': '해당 id의 선수가 존재하지 않습니다.',
+                'message': '해당 선수 정보를 찾을 수 없습니다.',
                 'data': None
             }, status=status.HTTP_404_NOT_FOUND)
 
@@ -71,7 +94,7 @@ class PitchersView(APIView):
                 )
             )
 
-            annotated_target = pitchers.get(player__id=id)
+            annotated_target = pitchers.get(player__id=player.id)
 
             def get_percentile(values, target, reverse=False):
                 try:
@@ -138,12 +161,35 @@ class PitchersView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BattersView(APIView):
-    def get(self, request, id):
-        player = Player.objects.filter(id=id).first()
+    def get(self, request, id=None):
+        # 지원: path param id, query param id, query param pcode
+        id_param = id if id is not None else request.query_params.get('id')
+        pcode_param = request.query_params.get('pcode')
+
+        player = None
+        if id_param is not None:
+            try:
+                player_id = int(id_param)
+            except (TypeError, ValueError):
+                return Response({
+                    'status': 'Bad Request',
+                    'message': '유효한 id를 입력해주세요.',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            player = Player.objects.filter(id=player_id).first()
+        elif pcode_param:
+            player = Player.objects.filter(pcode=pcode_param).first()
+        else:
+            return Response({
+                'status': 'Bad Request',
+                'message': 'id 또는 pcode를 쿼리 파라미터로 입력해주세요.',
+                'data': None
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         if not player:
             return Response({
                 'status': 'Not Found',
-                'message': '해당 id의 선수가 존재하지 않습니다.',
+                'message': '해당 선수 정보를 찾을 수 없습니다.',
                 'data': None
             }, status=status.HTTP_404_NOT_FOUND)
 
@@ -208,7 +254,7 @@ class BattersView(APIView):
                 )
             )
 
-            annotated_target = batters.get(player__id=id)
+            annotated_target = batters.get(player__id=player.id)
 
             def get_percentile(values, target):
                 """

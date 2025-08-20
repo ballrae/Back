@@ -5,9 +5,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  ECR_BACKEND: ballrae-backend         # ECR 리포지토리명
-  ECR_DATABASE: ballrae-postgres         # ECR 리포지토리명
-  ECR_HATE: hate-filter-api            # (있으면) ECR 리포지토리명
+  ECR_BACKEND: ballrae-demo         # ECR 리포지토리명
 
 jobs:
   build-and-push:
