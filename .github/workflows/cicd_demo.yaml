@@ -62,7 +62,7 @@ jobs:
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
             cd ~/Back   # compose 있는 디렉토리로 이동 (환경에 맞게 바꿔주세요)
@@ -87,18 +87,18 @@ jobs:
               | sudo docker login --username AWS --password-stdin "$REGISTRY"
 
             # --- 필요한 서비스만 갱신 (예: backend, db, api) ---
-            sudo docker compose pull "$ECR_BACKEND" "$ECR_HATE" || true
+            sudo docker compose pull web db hate-filter-api || true
             # db 이미지는 퍼블릭이면 pull 생략해도 됨
 
             # db는 먼저 보장해서 올리고
             sudo docker compose up -d "$ECR_DATABASE"
 
             # 앱 컨테이너들만 재생성 (전부가 아니라 필요한 것만)
-            sudo docker compose up -d --force-recreate --no-deps "$ECR_BACKEND" "$ECR_HATE"
+            sudo docker compose up -d --force-recreate --no-dep web db hate-filter-api
 
             # 마이그레이션 & 정적파일
-            sudo docker compose exec -T "$ECR_BACKEND" python manage.py migrate --noinput
-            sudo docker compose exec -T "$ECR_BACKEND" python manage.py collectstatic --noinput
+            sudo docker compose exec -T web python manage.py migrate --noinput
+            sudo docker compose exec -T web python manage.py collectstatic --noinput
 
             # 청소
             sudo docker image prune -f
