@@ -9,11 +9,18 @@ from .models import Batter, Pitcher
 from .services import get_realtime_batter, get_realtime_pitcher        
 from django.db.models import F, FloatField, ExpressionWrapper, Case, When, Value
 
-def get_serializer_for_player(player_obj):
+def get_season_serializer_for_player(player_obj):
     if player_obj.position == "B":
-        return BatterSimpleSerializer(Batter.objects.get(player=player_obj))
+        return BatterSimpleSerializer(Batter.objects.get(player=player_obj, season=2025))
     elif player_obj.position == "P":
-        return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj))
+        return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj, season=2025))
+
+# def get_serializer_for_player(player_obj):
+#     if player_obj.position == "B":
+#         return BatterSimpleSerializer(Batter.objects.get(player=player_obj, season=null))
+#     elif player_obj.position == "P":
+#         return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj, season=null))
+
 
 class PitchersView(APIView):
     def get(self, request, id=None):
@@ -49,7 +56,7 @@ class PitchersView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            pitcher = Pitcher.objects.get(player=player)
+            pitcher = Pitcher.objects.get(player=player, season=2025)
         except Pitcher.DoesNotExist:
             return Response({
                 'status': 'Not Found',
@@ -94,7 +101,7 @@ class PitchersView(APIView):
                 )
             )
 
-            annotated_target = pitchers.get(player__id=player.id)
+            annotated_target = pitchers.get(player__id=player.id, season=2025)
 
             def get_percentile(values, target, reverse=False):
                 try:
@@ -194,7 +201,7 @@ class BattersView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            batter = Batter.objects.get(player=player)
+            batter = Batter.objects.get(player=player, season=2025)
         except Batter.DoesNotExist:
             return Response({
                 'status': 'Not Found',
@@ -254,7 +261,7 @@ class BattersView(APIView):
                 )
             )
 
-            annotated_target = batters.get(player__id=player.id)
+            annotated_target = batters.get(player__id=player.id, season=2025)
 
             def get_percentile(values, target):
                 """
