@@ -351,7 +351,7 @@ class PlayerMainPageView(APIView):
         for player in players:
             if player.position == "B":
                 try:
-                    batter = Batter.objects.get(player=player)
+                    batter = Batter.objects.get(player=player, season=2025)
                     serializer = BatterSimpleSerializer(batter)
                     data.append(serializer.data)
                 except Batter.DoesNotExist:
@@ -359,7 +359,7 @@ class PlayerMainPageView(APIView):
 
             elif player.position == "P":
                 try:
-                    pitcher = Pitcher.objects.get(player=player)
+                    pitcher = Pitcher.objects.get(player=player, season=2025)
                     serializer = PitcherSimpleSerializer(pitcher)
                     data.append(serializer.data)
                 except Pitcher.DoesNotExist:
