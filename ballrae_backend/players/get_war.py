@@ -42,6 +42,7 @@ for p in players:
 
             Pitcher.objects.update_or_create(
                 player=player,
+                season='2025',
                 defaults={
                     'era': era,
                     'w': w,
@@ -59,6 +60,7 @@ for p in players:
 
             Batter.objects.update_or_create(
                 player=player,
+                season='2025',                
                 defaults={
                     'babip': babip,
                     'war': war,

@@ -220,3 +220,117 @@ class PlayerView(APIView):
             'message': f"{msg} 조회 성공",
             'data': serializer.data
         }, status=status.HTTP_200_OK)
+
+# 문자 중계 기반 오늘 성적
+class PlayerTodayStatsView(APIView):
+    def get(self, request):
+        """
+        쿼리 파라미터:
+        - pcode: 선수 pcode (필수)
+        - date: 조회 날짜(YYYYMMDD, 기본값: 오늘)
+        """
+        pcode = request.query_params.get("pcode")
+        date_str = request.query_params.get("date")
+        if not pcode:
+            return Response({"status": "FAIL", "message": "pcode(선수 코드)가 필요합니다."}, status=400)
+
+        if date_str:
+            try:
+                date = datetime.strptime(date_str, "%Y%m%d").date()
+                date_prefix = date_str
+
+                # 선수의 소속팀에 해당하는 경기만 조회하도록 team_id 사용
+                team_id = None
+                try:
+                    player_obj = Player.objects.get(pcode=pcode)
+                    team_id = player_obj.team_id
+                except Player.DoesNotExist:
+                    team_id = None
+            except Exception:
+                return Response({"status": "FAIL", "message": "날짜 형식이 올바르지 않습니다. (YYYYMMDD)"}, status=400)
+        else:
+            date = datetime.now().date()
+            date_prefix = date.strftime("%Y%m%d")
+
+        try:
+            player = Player.objects.get(pcode=pcode)
+        except Player.DoesNotExist:
+            return Response({"status": "FAIL", "message": "해당 선수를 찾을 수 없습니다."}, status=404)
+
+        # id가 date_prefix로 시작하는 경기 찾기
+        games = Game.objects.filter(id__startswith=date_prefix)
+        if not games.exists():
+            return Response({"status": "FAIL", "message": f"{date_prefix}에 열린 경기가 없습니다."}, status=404)
+
+        # 오늘 경기에서 해당 선수의 atbat 기록 찾기 (player__pcode로 비교)
+        atbats = AtBat.objects.filter(game__in=games, player__pcode=pcode)
+        if not atbats.exists():
+            return Response({
+                "status": "OK",
+                "message": f"{player.player_name} 선수의 {date_prefix} 경기 기록이 없습니다.",
+                "data": {}
+            }, status=200)
+
+        # 타자/투수 구분
+        if player.position == "B":
+            ab = atbats.count()
+            hits = atbats.filter(result__in=["안타", "2루타", "3루타", "홈런"]).count()
+            homeruns = atbats.filter(result="홈런").count()
+            walks = atbats.filter(result__in=["볼넷", "사구", "고의4구"]).count()
+            strikeouts = atbats.filter(result="삼진").count()
+            rbi = atbats.aggregate(rbi_sum=models.Sum("rbi"))["rbi_sum"] or 0
+
+            avg = round(hits / ab, 3) if ab else 0.0
+            pa = ab + walks
+            obp = round((hits + walks) / pa, 3) if pa else 0.0
+
+            data = {
+                "ab": ab,
+                "hits": hits,
+                "homeruns": homeruns,
+                "walks": walks,
+                "strikeouts": strikeouts,
+                "rbi": rbi,
+                "avg": avg,
+                "obp": obp,
+                "detail": [
+                    {
+                        "inning": atbat.inning,
+                        "result": atbat.result,
+                        "rbi": atbat.rbi,
+                        "description": atbat.description
+                    }
+                    for atbat in atbats.order_by("inning")
+                ]
+            }
+        elif player.position == "P":
+            outs = atbats.filter(result__in=["땅볼아웃", "뜬공아웃", "삼진", "병살", "희생플라이"]).count()
+            innings = round(outs / 3, 1) if outs else 0.0
+            strikeouts = atbats.filter(result="삼진").count()
+            walks = atbats.filter(result__in=["볼넷", "사구", "고의4구"]).count()
+            hits = atbats.filter(result__in=["안타", "2루타", "3루타", "홈런"]).count()
+            homeruns = atbats.filter(result="홈런").count()
+
+            data = {
+                "innings": innings,
+                "strikeouts": strikeouts,
+                "walks": walks,
+                "hits": hits,
+                "homeruns": homeruns,
+                "detail": [
+                    {
+                        "inning": atbat.inning,
+                        "result": atbat.result,
+                        "description": atbat.description
+                    }
+                    for atbat in atbats.order_by("inning")
+                ]
+            }
+        else:
+            return Response({"status": "FAIL", "message": "선수 포지션 정보가 없습니다."}, status=400)
+
+        return Response({
+            "status": "OK",
+            "message": f"{player.player_name} 선수의 {date_prefix} 경기 성적",
+            "data": data
+        }, status=200)
