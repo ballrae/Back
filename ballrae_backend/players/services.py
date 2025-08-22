@@ -289,13 +289,14 @@ def get_realtime_pitcher(pcode):
                 if not pitcher_obj:
                     return None
                 
+                games = pitcher_obj.games or 0
                 inn = pitcher_obj.innings or 0
                 k = pitcher_obj.strikeouts or 0
                 bb = pitcher_obj.walks or 0
                 hits = (pitcher_obj.singles or 0) + (pitcher_obj.doubles or 0) + (pitcher_obj.triples or 0) + (pitcher_obj.homeruns or 0)
                 
                 # ERA 계산 (타점이 없으므로 0으로 설정)
-                era = 0.0
+                era = pitcher_obj.era or 0.0
                 
                 # K/9 계산
                 k9 = round(k * 9.0 / inn, 2) if inn else 0.0
@@ -307,6 +308,7 @@ def get_realtime_pitcher(pcode):
                 whip = round((bb + hits) / inn, 2) if inn else 0.0
                 
                 return {
+                    "games": games,
                     "innings": inn,
                     "strikeouts": k,
                     "walks": bb,
