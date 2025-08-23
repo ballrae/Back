@@ -6,7 +6,7 @@ from ballrae_backend.games.models import Player, Game  # 이미 정의된 모델
 class Batter(models.Model):
     player = models.ForeignKey(Player, on_delete=models.CASCADE)
     season = models.IntegerField(null=True, blank=True)  # None이면 통산 기록
-    
+
     games = models.IntegerField(default=0, null=True)   # 경기수
     pa = models.IntegerField(default=0, null=True)  # 타석
     ab = models.IntegerField(default=0, null=True)  # 타수
@@ -47,3 +47,13 @@ class Pitcher(models.Model):
     @property
     def name(self):
         return self.player.player_name
+
+class BatterRecent(models.Model):
+    batter = models.OneToOneField(Batter, on_delete=models.CASCADE)
+    ab = models.IntegerField(default=0)      # 누적 타수
+    hits = models.IntegerField(default=0)    # 누적 안타수
+    updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def avg(self):
+        return round(self.hits / self.ab, 3) if self.ab else 0.0
