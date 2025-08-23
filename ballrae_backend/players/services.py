@@ -1,12 +1,158 @@
 # players/services.py
 from django.db import transaction
 from ballrae_backend.games.models import AtBat, Inning, Game, Player
-from .models import Pitcher, Batter
+from .models import Pitcher, Batter, BatterRecent
 import json
 from django.db.models import Q
 import requests
+from collections import defaultdict
+from django.utils.timezone import now
 
 cutoff_date = "20250322"
+
+def update_players_war_and_stats(p):
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    pcode = p.pcode
+    position = p.position
+    player = Player.objects.get(pcode=pcode)
+
+    url = f"https://m.sports.naver.com/ajax/player/record?category=kbo&playerId={pcode}"
+    try:
+        res = requests.get(url, headers=headers)
+        data = res.json()
+
+        if 'playerEndRecord' not in data or not data['playerEndRecord']:
+            print(f"[{pcode}] No record data.")
+
+        record_data = json.loads(data['playerEndRecord']['record'])
+        season_data = record_data['season'][1]  # 최신 시즌 기준 (index 1)
+        full_season_data = record_data['season'][0]
+
+        if position == 'P':
+            era = season_data.get('era')
+            w = season_data.get('w')
+            l = season_data.get('l')
+            sv = season_data.get('sv')
+            war = season_data.get('war')
+
+            Pitcher.objects.update_or_create(
+                player=player,
+                season='2025',
+                defaults={
+                    'era': era,
+                    'w': w,
+                    'l': l,
+                    'sv': sv,
+                    'war': war
+                }
+            )
+
+            era = full_season_data.get('era')
+            w = full_season_data.get('w')
+            l = full_season_data.get('l')
+            sv = full_season_data.get('sv')
+            war = full_season_data.get('war')
+
+            Pitcher.objects.update_or_create(
+                player=player,
+                season=None,
+                defaults={
+                    'era': era,
+                    'w': w,
+                    'l': l,
+                    'sv': sv,
+                    'war': war
+                }
+            )
+            print(f"[{pcode}] Pitcher updated")
+
+        elif position == 'B':
+            babip = season_data.get('babip')
+            war = season_data.get('war')
+            wrc = season_data.get('wrcPlus')
+
+            Batter.objects.update_or_create(
+                player=player,
+                season='2025',                
+                defaults={
+                    'babip': babip,
+                    'war': war,
+                    'wrc': wrc
+                }
+            )
+
+            babip = full_season_data.get('babip')
+            war = full_season_data.get('war')
+            wrc = full_season_data.get('wrcPlus')
+
+            Batter.objects.update_or_create(
+                player=player,
+                season=None,                
+                defaults={
+                    'babip': babip,
+                    'war': war,
+                    'wrc': wrc
+                }
+            )
+            print(f"[{pcode}] Batter updated")
+    
+    except IndexError:
+        print(f'[{pcode}] 1군 기록 없음')
+
+    except Exception as e:
+        print(f"[{pcode}] Error: {e}")
+
+@transaction.atomic
+def create_players_from_atbats():
+    batters = set()
+    pitchers = set()
+
+    atbats = AtBat.objects.select_related("inning__game").all()
+
+    for ab in atbats:
+        if not ab.inning or not ab.inning.game:
+            continue  # 예외 데이터는 스킵
+
+        half = ab.inning.half
+        game = ab.inning.game
+
+        if half == "top":
+            batter_team = game.away_team
+            pitcher_team = game.home_team
+        elif half == "bot":
+            batter_team = game.home_team
+            pitcher_team = game.away_team
+
+        # 타자 처리
+        if ab.actual_player and ab.actual_player not in batters:
+            player, _ = Player.objects.get_or_create(
+                player_name=ab.actual_player,
+                defaults={"position": "B", "team_id": batter_team}
+            )
+            if player.position != "B":
+                player.position = "B"
+                player.team_id = batter_team
+                player.save()
+            Batter.objects.get_or_create(player=player)
+            batters.add(ab.actual_player)
+
+        # 투수 처리
+        if ab.pitcher and ab.pitcher not in pitchers:
+            player, _ = Player.objects.get_or_create(
+                player_name=ab.pitcher,
+                defaults={"position": "P", "team_id": pitcher_team}
+            )
+            if player.position != "P":
+                player.position = "P"
+                player.team_id = pitcher_team
+                player.save()
+            Pitcher.objects.get_or_create(player=player)
+            pitchers.add(ab.pitcher)
+
+    print(f"✅ 등록 완료: 타자 {len(batters)}명 / 투수 {len(pitchers)}명")
 
 def calculate_innings(atbats):
     innings_outs = 0
@@ -336,3 +482,57 @@ def get_realtime_pitcher(pcode):
     }
 
     return result
+
+def update_recent_5_stats_from_atbats(player):
+    print(f"📊 [{player.player_name}] 최근 5경기 타수/안타 계산 시작")
+
+    team_id = player.team_id
+    pcode = player.pcode
+
+    # ✅ 해당 팀의 최근 완료된 5경기
+    recent_games = (
+        Game.objects
+        .filter(status='done')
+        .filter(Q(home_team=team_id) | Q(away_team=team_id))
+        .order_by('-date')[:5]
+    )
+    game_ids = [g.id for g in recent_games]
+
+    # ✅ 해당 경기에서 타자가 나온 타석만 필터링
+    atbats = AtBat.objects.filter(
+        inning__game__id__in=game_ids,
+        actual_player=pcode
+    )
+
+    # ✅ 타수 / 안타 계산
+    ab = 0
+    hits = 0
+
+    for abt in atbats:
+        is_ab = abt.main_result not in ['볼넷', '사구', '고의4구']
+        is_hit = abt.main_result and any(hit in abt.main_result for hit in ['안타', '2루타', '3루타', '홈런'])
+
+        if is_ab:
+            ab += 1
+        if is_hit:
+            hits += 1
+
+    # ✅ 가장 최신 Batter 객체 찾아서 저장
+    latest_batter = (
+        Batter.objects.filter(player=player, season__isnull=False)
+        .order_by('-season')
+        .first()
+    )
+
+    if latest_batter:
+        BatterRecent.objects.update_or_create(
+            batter=latest_batter,
+            defaults={
+                'ab': ab,
+                'hits': hits,
+                'updated_at': now()
+            }
+        )
+        print(f"✅ 저장 완료: ab={ab}, hits={hits}")
+    else:
+        print("❌ Batter 객체 없음 (season 기록 없음)")
