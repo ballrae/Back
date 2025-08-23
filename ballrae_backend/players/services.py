@@ -50,8 +50,11 @@ def calculate_redis_innings(atbats: list, pcode: str) -> float:
 
 
 def get_today_stat_from_redis(player: Player) -> dict:
-    today = "20250815"
-    prefix = f"game:{today}"
+    today = datetime.date.today()
+    prefix = f"game:{today.strftime('%Y%m%d')}"
+
+    # today = "20250815"
+    # prefix = f"game:{today}"
 
     keys = redis_client.keys(f"{prefix}*")
     keys = [k for k in keys if ":inning:" in k]
