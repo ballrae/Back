@@ -7,8 +7,103 @@ from django.db.models import Q
 import requests
 from collections import defaultdict
 from django.utils.timezone import now
+from ballrae_backend.streaming.redis_client import redis_client
+import datetime
+import re
 
 cutoff_date = "20250322"
+
+def calculate_redis_innings(atbats: list, pcode: str) -> float:
+    innings_outs = 0
+    previous_out = None
+    previous_game = None
+
+    # 이 투수가 던진 타석만 추출
+    filtered = [ab for ab in atbats if ab.get("pitcher") == pcode]
+    # print(len(filtered))
+    sorted_atbats = sorted(filtered, key=lambda ab: (
+        ab.get("game_id"), ab.get("inning", 0), ab.get("order", 0))
+    )
+
+    for ab in sorted_atbats:
+        current_game = ab.get("game_id")
+        current_out = int(ab.get("out") or 0)
+
+        if previous_out is None or previous_game != current_game:
+            innings_outs += current_out
+            print(innings_outs)
+        elif current_out >= previous_out:
+            innings_outs += current_out - previous_out
+            print(innings_outs)            
+        else:
+            innings_outs += current_out  # 이닝이 바뀌었거나 리셋됐을 때
+            print(innings_outs)
+
+        previous_out = current_out
+        previous_game = current_game
+
+    # 이닝 포맷 변환
+    whole = innings_outs // 3
+    remainder = innings_outs % 3
+    decimal = 0.1 if remainder == 1 else 0.2 if remainder == 2 else 0.0
+    return round(whole + decimal, 1)
+
+
+def get_today_stat_from_redis(player: Player) -> dict:
+    today = "20250815"
+    prefix = f"game:{today}"
+
+    keys = redis_client.keys(f"{prefix}*")
+    keys = [k for k in keys if ":inning:" in k]
+
+    total_stat = defaultdict(int)
+
+    for key in keys:
+        raw = redis_client.get(key)
+        if not raw:
+            continue
+
+        atbats = json.loads(raw).get('atbats', [])
+        if player.position == 'P':
+            total_stat['innings'] = calculate_redis_innings(atbats, player.pcode)
+
+        for ab in atbats:
+            if not ab:
+                continue
+
+            is_batter = ab.get('actual_batter') == player.pcode
+            is_pitcher = ab.get('pitcher') == player.pcode
+            if not (is_batter or is_pitcher):
+                continue
+
+            main_result = ab.get("main_result", "")
+            pitch_count = ab.get("pitch_num", [])
+            # runs = int(ab.get("score", 0))
+            runs = 0
+
+            if player.position == 'B' and is_batter:
+                total_stat['pa'] += 1
+
+                if not any(x in main_result for x in ["볼넷", "사구", "4구", "몸에", "희생플라이", "희생번트"]):
+                    total_stat['ab'] += 1
+                if any(x in main_result for x in ["안타", "1루타", "2루타", "3루타", "홈런"]):
+                    total_stat['hits'] += 1
+                if "홈런" in main_result:
+                    total_stat['homeruns'] += 1
+                if any(x in main_result for x in ["볼넷", "사구", "4구", "몸에"]):
+                    total_stat['bb'] += 1
+                if any(x in main_result for x in ["삼진", "낫 아웃"]):
+                    total_stat['strikeouts'] += 1
+
+            elif player.position == 'P' and is_pitcher:
+                if any(x in main_result for x in ["안타", "1루타", "2루타", "3루타", "홈런"]):
+                    total_stat['hits'] += 1
+                if ab.get('actual_batter') and any(x in main_result for x in ["삼진", "낫 아웃"]):
+                    total_stat['strikeouts'] += 1
+                total_stat['pitches'] += len(pitch_count or [])
+                total_stat['runs'] += runs
+
+    return total_stat
 
 def update_players_war_and_stats(p):
     headers = {
@@ -105,55 +200,6 @@ def update_players_war_and_stats(p):
     except Exception as e:
         print(f"[{pcode}] Error: {e}")
 
-@transaction.atomic
-def create_players_from_atbats():
-    batters = set()
-    pitchers = set()
-
-    atbats = AtBat.objects.select_related("inning__game").all()
-
-    for ab in atbats:
-        if not ab.inning or not ab.inning.game:
-            continue  # 예외 데이터는 스킵
-
-        half = ab.inning.half
-        game = ab.inning.game
-
-        if half == "top":
-            batter_team = game.away_team
-            pitcher_team = game.home_team
-        elif half == "bot":
-            batter_team = game.home_team
-            pitcher_team = game.away_team
-
-        # 타자 처리
-        if ab.actual_player and ab.actual_player not in batters:
-            player, _ = Player.objects.get_or_create(
-                player_name=ab.actual_player,
-                defaults={"position": "B", "team_id": batter_team}
-            )
-            if player.position != "B":
-                player.position = "B"
-                player.team_id = batter_team
-                player.save()
-            Batter.objects.get_or_create(player=player)
-            batters.add(ab.actual_player)
-
-        # 투수 처리
-        if ab.pitcher and ab.pitcher not in pitchers:
-            player, _ = Player.objects.get_or_create(
-                player_name=ab.pitcher,
-                defaults={"position": "P", "team_id": pitcher_team}
-            )
-            if player.position != "P":
-                player.position = "P"
-                player.team_id = pitcher_team
-                player.save()
-            Pitcher.objects.get_or_create(player=player)
-            pitchers.add(ab.pitcher)
-
-    print(f"✅ 등록 완료: 타자 {len(batters)}명 / 투수 {len(pitchers)}명")
-
 def calculate_innings(atbats):
     innings_outs = 0
     previous_out = None
@@ -218,7 +264,6 @@ def save_batter_transactionally(player: Player):
 @transaction.atomic
 def save_pitcher_transactionally(player: Player):
     atbats = AtBat.objects.filter(
-        # pitcher=player.id,
         pitcher=player.pcode,
         inning__game_id__gte=cutoff_date
     )
@@ -383,11 +428,14 @@ def get_realtime_batter(pcode):
     except Exception as e:
         season_stats = None
         career_stats = None
+    
+    today_stats = get_today_stat_from_redis(player) if player else None
 
     result = {
         "batter": direction,
         "season_2025": season_stats,
-        "career": career_stats
+        "career": career_stats,
+        "today": today_stats
     }
 
     return result
@@ -472,13 +520,16 @@ def get_realtime_pitcher(pcode):
         season_stats = None
         career_stats = None
 
+    today_stats = get_today_stat_from_redis(player) if player else None
+
     result = {
         "pitcher": [
             {"type": p['pit'], "rate": p['pit_rt'], "speed": p['speed']}
             for p in top_3
         ],
         "season_2025": season_stats,
-        "career": career_stats
+        "career": career_stats,
+        "today": today_stats
     }
 
     return result

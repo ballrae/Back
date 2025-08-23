@@ -9,19 +9,6 @@ from .models import Batter, Pitcher
 from .services import get_realtime_batter, get_realtime_pitcher        
 from django.db.models import F, FloatField, ExpressionWrapper, Case, When, Value
 
-def get_season_serializer_for_player(player_obj):
-    if player_obj.position == "B":
-        return BatterSimpleSerializer(Batter.objects.get(player=player_obj, season=2025))
-    elif player_obj.position == "P":
-        return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj, season=2025))
-
-# def get_serializer_for_player(player_obj):
-#     if player_obj.position == "B":
-#         return BatterSimpleSerializer(Batter.objects.get(player=player_obj, season=null))
-#     elif player_obj.position == "P":
-#         return PitcherSimpleSerializer(Pitcher.objects.get(player=player_obj, season=null))
-
-
 class PitchersView(APIView):
     def get(self, request, id=None):
         # 지원: path param id, query param id, query param pcode
