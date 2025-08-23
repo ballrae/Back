@@ -485,7 +485,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
 
     return at_bats
 
-def create_merged_dict(entries, game_id):
+def create_merged_dict(entries, game_id, original_home_code, original_away_code):
     merged = {}
     existing_pcodes = set(models.Player.objects.values_list('pcode', flat=True))
 
@@ -496,7 +496,7 @@ def create_merged_dict(entries, game_id):
     for entry_list in entries:
         # 엔트리 팀 판단
         is_home = entry_list == home_entry or entry_list == home_lineup
-        team_id = home_code if is_home else away_code
+        team_id = original_home_code if is_home else original_away_code
 
         for group in ['pitcher', 'batter']:
             for player in entry_list[group]:
@@ -504,7 +504,7 @@ def create_merged_dict(entries, game_id):
                 name = player.get("name")
                 position = "B" if group == "batter" else "P"
 
-                if pcode is None or name is None:
+                if not pcode or not name or name.strip() == "":
                     continue
 
                 if pcode not in existing_pcodes:
@@ -591,7 +591,12 @@ def crawling(game, use_redis=False):
                     )
                     result["defense_positions"] = defense_payload
 
-                merged_entries = create_merged_dict(entries, game_id)
+                entries = [home_entry, away_entry, home_lineup, away_lineup]
+                merged_entries = create_merged_dict(
+                    entries, game_id,
+                    original_home_code=game[10:12],
+                    original_away_code=game[8:10]
+                )
 
             try:
                 top, bot, game_done = split_half_inning_relays(relays, inning)
@@ -628,9 +633,12 @@ def crawling(game, use_redis=False):
             continue
 
         except TypeError:
-            print(f"[{game}] {inning}회 TypeError: 경기 취소 처리")
-            mark_game_status(game_id, 'cancelled')
-            break
+            if inning == 1:
+                print(f"[{game}] {inning}회 TypeError: 경기 취소 처리")
+                mark_game_status(game_id, 'cancelled')
+                break
+            else:   
+                continue
 
         except Exception as e:
             print(f"[{game}] {inning}회 요청 오류 (Exception): {e}")
@@ -843,15 +851,16 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
-    test()
+    # test()
     # realtime_test()
-    # get_realtime_data()
+    get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
     # get_all_game_datas(2024)
     # get_all_game_datas(2025)
-    # get_game_datas(20250711, 20250720)
+    # get_game_datas(20230922, 20231130)
+    # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
     main()
