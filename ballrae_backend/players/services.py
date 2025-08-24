@@ -53,7 +53,7 @@ def get_today_stat_from_redis(player: Player) -> dict:
     today = datetime.date.today()
     prefix = f"game:{today.strftime('%Y%m%d')}"
 
-    # today = "20250815"
+    # today = "20250823"
     # prefix = f"game:{today}"
 
     keys = redis_client.keys(f"{prefix}*")
@@ -98,15 +98,6 @@ def get_today_stat_from_redis(player: Player) -> dict:
                 if any(x in main_result for x in ["삼진", "낫 아웃"]):
                     total_stat['strikeouts'] += 1
 
-                return {
-                    "pa": total_stat.get("pa", 0),
-                    "ab": total_stat.get("ab", 0),
-                    "hits": total_stat.get("hits", 0),
-                    "homeruns": total_stat.get("homeruns", 0),
-                    "bb": total_stat.get("bb", 0),
-                    "strikeouts": total_stat.get("strikeouts", 0),
-                } 
-
             elif player.position == 'P' and is_pitcher:
                 if any(x in main_result for x in ["안타", "1루타", "2루타", "3루타", "홈런"]):
                     total_stat['hits'] += 1
@@ -115,13 +106,24 @@ def get_today_stat_from_redis(player: Player) -> dict:
                 total_stat['pitches'] += len(pitch_count or [])
                 total_stat['runs'] += runs
 
-                return {
-                    "pitches": total_stat.get("pitches", 0),
-                    "runs": total_stat.get("runs", 0),
-                    "innings": total_stat.get("innings", 0),
-                    "hits": total_stat.get("hits", 0),
-                    "strikeouts": total_stat.get("strikeouts", 0),
-                } 
+        if player.position == 'B':
+            return {
+                "pa": total_stat.get("pa", 0),
+                "ab": total_stat.get("ab", 0),
+                "hits": total_stat.get("hits", 0),
+                "homeruns": total_stat.get("homeruns", 0),
+                "bb": total_stat.get("bb", 0),
+                "strikeouts": total_stat.get("strikeouts", 0),
+            }
+
+        elif player.position == 'P':
+            return {
+                "pitches": total_stat.get("pitches", 0),
+                "runs": total_stat.get("runs", 0),
+                "innings": total_stat.get("innings", 0),
+                "hits": total_stat.get("hits", 0),
+                "strikeouts": total_stat.get("strikeouts", 0),
+            }
 
 def update_players_war_and_stats(p):
     headers = {
