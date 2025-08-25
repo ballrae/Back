@@ -332,7 +332,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
         options = r.get("textOptions", [])
         pitch_sequence, result, strike_zone = process_pitch_and_events(r)
         actual_batter, original_batter, bat_order, pitcher = None, None, None, None
-        out, score = None, None
+        out, score = options[0].get('currentGameState').get('out'), None
         base1, base2, base3 = None, None, None
 
         for opt in options:
@@ -343,7 +343,6 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
             actual_batter = game_state.get('batter')
             score = f"{game_state.get('awayScore')}:{game_state.get('homeScore')}"
             base1, base2, base3 = game_state.get('base1'), game_state.get('base2'), game_state.get('base3')
-            out = game_state.get('out')
 
             # 타자 정보 파싱
             batter_info = opt.get("batterRecord", {})
@@ -398,6 +397,7 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
                 "full_result": result or "(진행 중)",
                 "pitch_sequence": pitch_sequence
             }
+
             at_bats.append(new_atbat)
             pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
             current_at_bat_key = pitch_merge_key
@@ -852,8 +852,8 @@ def test():
 
 def main():
     # test()
-    # realtime_test()
-    get_realtime_data()
+    realtime_test()
+    # get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
