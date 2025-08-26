@@ -221,8 +221,13 @@ def process_pitch_and_events(relay):
             elif any(keyword in text for keyword in ["대타"]):
                 result_parts.append(text)
 
+            # 이벤트 처리: 도루 저지
+            elif any(keyword in text for keyword in ["도루실패아웃"]):
+                event.append(text)
+                result_parts.append(text)
+
             # 이벤트 처리: 투수 교체 포함
-            elif any(keyword in text for keyword in ["투수판 이탈", "체크 스윙", "도루", "비디오 판독", "교체"]):
+            elif any(keyword in text for keyword in ["투수판 이탈", "도루", "체크 스윙", "비디오 판독", "교체"]):
                 event.append(text)
 
             # 이벤트 처리: 체크스윙
@@ -795,11 +800,11 @@ def get_game_datas(start_date, end_date):
         if game_done: continue
 
 def realtime_test():
-    today = '20250815'
+    today = '20250820'
     # game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
 
-    game_ids = ['20250815KADS02025']
+    game_ids = ['20250820SSNC02025']
 
     for game in game_ids:
         date = game[:8]
@@ -852,8 +857,8 @@ def test():
 
 def main():
     # test()
-    realtime_test()
-    # get_realtime_data()
+    # realtime_test()
+    get_realtime_data()
     # get_all_game_datas(2021)
     # get_all_game_datas(2022)
     # get_all_game_datas(2023)
