@@ -13,41 +13,59 @@ import re
 
 cutoff_date = "20250322"
 
-def calculate_redis_innings(atbats: list, pcode: str) -> float:
+def count_outs_in_result(main_result: str, full_result: str) -> int:
+
+    out_count = 0
+
+    # main_result로부터 아웃 판단
+    if any(keyword in main_result for keyword in ["아웃", "삼진", "낫 아웃"]):
+        out_count += 1
+
+    # full_result에서 추가 아웃 여부 파악 (예: 병살, 주자 포스아웃 등)
+    if full_result:
+        runners_out = re.findall(r'아웃', full_result)
+        out_count += len(runners_out)
+
+    return out_count
+
+def calculate_redis_innings(atbats: list, pcode: str) -> int:
     innings_outs = 0
     previous_out = None
-    previous_game = None
 
     # 이 투수가 던진 타석만 추출
     filtered = [ab for ab in atbats if ab.get("pitcher") == pcode]
-    # print(len(filtered))
-    sorted_atbats = sorted(filtered, key=lambda ab: (
-        ab.get("game_id"), ab.get("inning", 0), ab.get("order", 0))
-    )
 
-    for ab in sorted_atbats:
-        current_game = ab.get("game_id")
-        current_out = int(ab.get("out") or 0)
+    # 이닝별로 그룹화
+    innings_map = defaultdict(list)
+    for ab in atbats:
+        key = (ab.get("game_id"), ab.get("inning", 0), ab.get("half", "top"))
+        innings_map[key].append(ab)
 
-        if previous_out is None or previous_game != current_game:
-            innings_outs += current_out
-            print(innings_outs)
-        elif current_out >= previous_out:
-            innings_outs += current_out - previous_out
-            print(innings_outs)            
-        else:
-            innings_outs += current_out  # 이닝이 바뀌었거나 리셋됐을 때
-            print(innings_outs)
+    for key, inning_atbats in innings_map.items():
+        # 해당 이닝에서 이 투수가 던진 타석만
+        pitcher_atbats = [ab for ab in inning_atbats if ab.get("pitcher") == pcode]
+        if not pitcher_atbats:
+            continue
 
-        previous_out = current_out
-        previous_game = current_game
+        inning_outs = 0
+        for ab in pitcher_atbats:
+            out_count = count_outs_in_result(ab.get("main_result", ""), ab.get("full_result", ""))
+            inning_outs += out_count
 
-    # 이닝 포맷 변환
-    whole = innings_outs // 3
-    remainder = innings_outs % 3
-    decimal = 0.1 if remainder == 1 else 0.2 if remainder == 2 else 0.0
-    return round(whole + decimal, 1)
+        innings_outs += inning_outs
 
+        # 마지막 타석 체크
+        last_ab = inning_atbats[-1]
+        if last_ab.get("pitcher") == pcode and inning_outs < 3:
+            # 투수가 마지막 타석 정리함 → 보정 필요
+            innings_outs += (3 - inning_outs)
+
+    return innings_outs
+
+def convert_outs_to_innings(outs: int) -> float:
+    whole = outs // 3
+    remainder = outs % 3
+    return float(f"{whole}.{remainder}")
 
 def get_today_stat_from_redis(player: Player) -> dict:
     today = datetime.date.today()
@@ -57,18 +75,33 @@ def get_today_stat_from_redis(player: Player) -> dict:
     # prefix = f"game:{today}"
 
     keys = redis_client.keys(f"{prefix}*")
+    keys = [k.decode() if isinstance(k, bytes) else k for k in keys]
     keys = [k for k in keys if ":inning:" in k]
+
+    # 해당 player.team_id가 away/home 코드에 포함된 경기만 필터링
+    valid_keys = []
+    for k in keys:
+        try:
+            game_id_part = k.split(":")[1]  # "game:20250815KADS02025" -> "20250815KADS02025"
+            away_code = game_id_part[8:10]
+            home_code = game_id_part[10:12]
+
+            if player.team_id in (away_code, home_code):
+                valid_keys.append(k)
+        except Exception as e:
+            continue  # 혹시라도 포맷 안맞는 key가 있을 경우 무시
 
     total_stat = defaultdict(int)
 
-    for key in keys:
+    for key in valid_keys:
         raw = redis_client.get(key)
         if not raw:
             continue
 
         atbats = json.loads(raw).get('atbats', [])
+
         if player.position == 'P':
-            total_stat['innings'] = calculate_redis_innings(atbats, player.pcode)
+            total_stat['innings'] += calculate_redis_innings(atbats, player.pcode)
 
         for ab in atbats:
             if not ab:
@@ -81,8 +114,6 @@ def get_today_stat_from_redis(player: Player) -> dict:
 
             main_result = ab.get("main_result", "")
             pitch_count = ab.get("pitch_num", [])
-            # runs = int(ab.get("score", 0))
-            runs = 0
 
             if player.position == 'B' and is_batter:
                 total_stat['pa'] += 1
@@ -98,30 +129,46 @@ def get_today_stat_from_redis(player: Player) -> dict:
                 if any(x in main_result for x in ["삼진", "낫 아웃"]):
                     total_stat['strikeouts'] += 1
 
-                return {
-                    "pa": total_stat.get("pa", 0),
-                    "ab": total_stat.get("ab", 0),
-                    "hits": total_stat.get("hits", 0),
-                    "homeruns": total_stat.get("homeruns", 0),
-                    "bb": total_stat.get("bb", 0),
-                    "strikeouts": total_stat.get("strikeouts", 0),
-                } 
-
             elif player.position == 'P' and is_pitcher:
-                if any(x in main_result for x in ["안타", "1루타", "2루타", "3루타", "홈런"]):
-                    total_stat['hits'] += 1
-                if ab.get('actual_batter') and any(x in main_result for x in ["삼진", "낫 아웃"]):
-                    total_stat['strikeouts'] += 1
-                total_stat['pitches'] += len(pitch_count or [])
-                total_stat['runs'] += runs
+                pitch_sequence = ab.get('pitch_sequence', "")
+                full_result = ab.get("full_result", "")
+                pitches = 0
 
-                return {
-                    "pitches": total_stat.get("pitches", 0),
-                    "runs": total_stat.get("runs", 0),
-                    "innings": total_stat.get("innings", 0),
-                    "hits": total_stat.get("hits", 0),
-                    "strikeouts": total_stat.get("strikeouts", 0),
-                } 
+                if pitch_sequence:
+                    for p in pitch_sequence:
+                        if (p.get('pitch_type')):
+                            pitches += 1
+
+                if any(x in main_result for x in ["안타", "1루타", "2루타", "3루타"]):
+                    total_stat['hits'] += 1
+                if any(x in main_result for x in ["삼진", "낫 아웃"]):
+                    total_stat['strikeouts'] += 1
+                total_stat['pitches'] += pitches
+                if full_result is not None:
+                    if "홈인" in full_result:
+                        total_stat['runs'] += full_result.count("홈인")
+                if ("홈런" in main_result):
+                    total_stat['runs'] += 1
+                    total_stat['hits'] += 1
+
+    if player.position == 'B':
+        return {
+            "pa": total_stat.get("pa", 0),
+            "ab": total_stat.get("ab", 0),
+            "hits": total_stat.get("hits", 0),
+            "homeruns": total_stat.get("homeruns", 0),
+            "bb": total_stat.get("bb", 0),
+            "strikeouts": total_stat.get("strikeouts", 0),
+        }
+
+    elif player.position == 'P':
+        return {
+            "pitches": total_stat.get("pitches", 0),
+            "runs": total_stat.get("runs", 0),
+            "innings": convert_outs_to_innings(total_stat.get("innings", 0)),
+            "hits": total_stat.get("hits", 0),
+            "strikeouts": total_stat.get("strikeouts", 0),
+        }
 
 def update_players_war_and_stats(p):
     headers = {
