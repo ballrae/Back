@@ -4,6 +4,7 @@ from adrf.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Game, Player
+from .services import get_score_from_atbats
 from .serializers import GameSerializer, InningSerializer, GameDateSerializer, PlayerSerializer
 from datetime import datetime
 from ballrae_backend.streaming.redis_client import redis_client
@@ -69,6 +70,7 @@ def update_game_statuses():
 class GameListView(APIView):
     def get(self, request, date):
         update_game_statuses()
+        today = datetime.today()
 
         try:
             games = Game.objects.filter(id__startswith=date)
@@ -76,10 +78,18 @@ class GameListView(APIView):
             return Response({
                 'status': 'OK',
                 'message': '게임 목록 조회 성공',
-                'data': serializer.data
+                'data': [
+                    {
+                        **game,
+                        "score": get_score_from_atbats(game["id"]) if date == today.strftime("%Y%m%d") and game["id"][:8] == today.strftime("%Y%m%d") else game.get("score")
+                    }
+                    for game in serializer.data
+                ] if date == today.strftime("%Y%m%d") else serializer.data
+                
             }, status=status.HTTP_200_OK)
 
-        except:
+        except Exception as e:
+            print(e)
             return Response({
                 'status': 'OK',
                 'message': '게임 목록 조회 성공',

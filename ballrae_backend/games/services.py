@@ -2,6 +2,7 @@ from django.db import transaction
 from .models import Game, Inning, Player, AtBat, Pitch
 import json
 from django.db.models import Q
+from ballrae_backend.streaming.redis_client import redis_client
 
 @transaction.atomic
 def save_at_bat_transactionally(data: dict, game_id):
@@ -81,3 +82,43 @@ def save_at_bat_transactionally(data: dict, game_id):
         except:
             print(game, inning, batter.player_name, "error")
             continue
+
+def get_score_from_atbats(game_id):
+    keys = redis_client.keys(f"game:{game_id}*")
+
+    # 이닝과 half 추출 함수
+    def extract_inning_and_half(key):
+        try:
+            parts = key.split(":")
+            inning = int(parts[-2])
+            half = parts[-1]
+            return inning, half
+        except Exception:
+            return -1, ""
+
+    inning_half_list = []
+    for key in keys:
+        k = key.decode() if isinstance(key, bytes) else key
+        inning, half = extract_inning_and_half(k)
+        if inning != -1:
+            inning_half_list.append((inning, half, k))
+
+    if not inning_half_list:
+        return None  # 유효한 key가 없으면 None 반환
+
+    max_inning = max(inning_half_list, key=lambda x: x[0])[0]
+    max_inning_keys = [(half, k) for inning, half, k in inning_half_list if inning == max_inning]
+
+    valid_key = None
+    for half, k in max_inning_keys:
+        if half == "bot":
+            valid_key = k
+            break
+    if not valid_key:
+        for half, k in max_inning_keys:
+            if half == "top":
+                valid_key = k
+                break
+
+    recent = json.loads(redis_client.get(valid_key))['atbats'][-1]['score']
+    return recent
