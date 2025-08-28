@@ -70,11 +70,11 @@ def convert_outs_to_innings(outs: int) -> float:
     return float(f"{whole}.{remainder}")
 
 def get_today_stat_from_redis(player: Player) -> dict:
-    # today = datetime.date.today()
-    # prefix = f"game:{today.strftime('%Y%m%d')}"
+    today = datetime.date.today()
+    prefix = f"game:{today.strftime('%Y%m%d')}"
 
-    today = "20250827"
-    prefix = f"game:{today}"
+    # today = "20250827"
+    # prefix = f"game:{today}"
 
     keys = redis_client.keys(f"{prefix}*")
     keys = [k.decode() if isinstance(k, bytes) else k for k in keys]
