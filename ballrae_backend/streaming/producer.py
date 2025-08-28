@@ -448,6 +448,10 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
         for i, ab in enumerate(at_bats):
             # full_result가 진행 중이고 event만 있을 경우
             if ab["full_result"] == "(진행 중)" and ab["pitch_sequence"]:
+                last_res = pitch_sequence[-1].get("pitch_result")
+                if last_res and ":" in last_res:
+                    new_atbat["full_result"] = last_res
+
                 only_event = all(p.get("pitch_result") is None and p.get("event") for p in ab["pitch_sequence"])
                 
                 if only_event:
@@ -804,7 +808,7 @@ def realtime_test():
     # game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
 
-    game_ids = ['20250820SSNC02025']
+    game_ids = ['20250827LGNC02025']
 
     for game in game_ids:
         date = game[:8]
