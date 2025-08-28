@@ -121,21 +121,26 @@ def split_half_inning_relays(relays: List[Dict], inning: int):
 
     for r in reversed(relays):
         title = r.get("title", "")
-        if "====" in title:
-            game_over_trigger = True
-            continue  # 이 텍스트 자체는 저장 안 함
-
         if f"{inning}회말" in title:
             current = "bot"
             continue
+
         elif f"{inning}회초" in title:
             current = "top"
             continue
 
-        if current == "top":
-            top.append(r)
         else:
-            bottom.append(r)
+            if "====" in title:
+                game_over_trigger = True
+                return top, bottom, game_over_trigger
+
+            if current == "top":
+                # print(title)
+                top.append(r)
+
+            else:
+                # print(title)
+                bottom.append(r)
 
     return top, bottom, game_over_trigger
 
@@ -632,6 +637,7 @@ def crawling(game, use_redis=False):
                 }
 
             if game_done is True:
+                print(inning)
                 result['game_over'] = game_done
                 mark_game_status(game_id, 'done')
                 return result, game_done
@@ -663,6 +669,7 @@ def crawl_game_loop(game_id, topic, producer):
     while True:
         try:
             result, game_done = crawling(game_id, True)
+            print(game_done)
 
             if result:
                 if not game_done and not ing_marked:
