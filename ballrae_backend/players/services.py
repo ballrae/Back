@@ -23,8 +23,10 @@ def count_outs_in_result(main_result: str, full_result: str) -> int:
 
     # full_result에서 추가 아웃 여부 파악 (예: 병살, 주자 포스아웃 등)
     if full_result:
-        runners_out = re.findall(r'아웃', full_result)
-        out_count += len(runners_out)
+        segments = full_result.split('|')
+        for seg in segments:
+            if '아웃' in seg:
+                out_count += 1
 
     return out_count
 
@@ -68,11 +70,11 @@ def convert_outs_to_innings(outs: int) -> float:
     return float(f"{whole}.{remainder}")
 
 def get_today_stat_from_redis(player: Player) -> dict:
-    today = datetime.date.today()
-    prefix = f"game:{today.strftime('%Y%m%d')}"
+    # today = datetime.date.today()
+    # prefix = f"game:{today.strftime('%Y%m%d')}"
 
-    # today = "20250815"
-    # prefix = f"game:{today}"
+    today = "20250827"
+    prefix = f"game:{today}"
 
     keys = redis_client.keys(f"{prefix}*")
     keys = [k.decode() if isinstance(k, bytes) else k for k in keys]

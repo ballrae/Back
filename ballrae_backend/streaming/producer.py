@@ -121,21 +121,26 @@ def split_half_inning_relays(relays: List[Dict], inning: int):
 
     for r in reversed(relays):
         title = r.get("title", "")
-        if "====" in title:
-            game_over_trigger = True
-            continue  # 이 텍스트 자체는 저장 안 함
-
         if f"{inning}회말" in title:
             current = "bot"
             continue
+
         elif f"{inning}회초" in title:
             current = "top"
             continue
 
-        if current == "top":
-            top.append(r)
         else:
-            bottom.append(r)
+            if "====" in title:
+                game_over_trigger = True
+                return top, bottom, game_over_trigger
+
+            if current == "top":
+                # print(title)
+                top.append(r)
+
+            else:
+                # print(title)
+                bottom.append(r)
 
     return top, bottom, game_over_trigger
 
@@ -448,6 +453,10 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
         for i, ab in enumerate(at_bats):
             # full_result가 진행 중이고 event만 있을 경우
             if ab["full_result"] == "(진행 중)" and ab["pitch_sequence"]:
+                last_res = pitch_sequence[-1].get("pitch_result")
+                if last_res and ":" in last_res:
+                    new_atbat["full_result"] = last_res
+
                 only_event = all(p.get("pitch_result") is None and p.get("event") for p in ab["pitch_sequence"])
                 
                 if only_event:
@@ -628,6 +637,7 @@ def crawling(game, use_redis=False):
                 }
 
             if game_done is True:
+                print(inning)
                 result['game_over'] = game_done
                 mark_game_status(game_id, 'done')
                 return result, game_done
@@ -659,6 +669,7 @@ def crawl_game_loop(game_id, topic, producer):
     while True:
         try:
             result, game_done = crawling(game_id, True)
+            print(game_done)
 
             if result:
                 if not game_done and not ing_marked:
@@ -804,7 +815,7 @@ def realtime_test():
     # game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
 
-    game_ids = ['20250820SSNC02025']
+    game_ids = ['20250827LGNC02025']
 
     for game in game_ids:
         date = game[:8]
