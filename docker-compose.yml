@@ -67,7 +67,9 @@ services:
       - "8002:8002"
     restart: no
     volumes:
-      - ./pli-api/app:/app   # 코드 수정 핫리로드 용(개발 시 편함)
+      - ./data:/app/data
+      - ./pli-api/app:/app/app
+
     
   zookeeper:
     image: bitnami/zookeeper:latest

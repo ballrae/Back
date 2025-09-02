@@ -17,10 +17,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY app/ . 
 
 # 데이터 파일을 /app 디렉토리로 복사합니다.
-COPY data/ /app/data/
+# 이 명령어가 에러를 냈던 바로 그 부분입니다.
+# 이번에는 Dockerfile이 아니라 docker-compose.yml에서 volume으로 연결하는 게 더 좋습니다.
+# 하지만 당장 에러를 해결하기 위해 Dockerfile에 그대로 둡니다.
+# 나중에 개발 환경을 위해 volumes로 바꾸면 됩니다.
+# COPY ../data/ /app/data/
 
 # Uvicorn을 사용해 FastAPI 앱을 실행합니다.
-# 'main'은 모듈 이름, 'app'은 FastAPI 인스턴스 이름입니다.
-# app 폴더를 통째로 복사했으므로 'app.pli_api'가 아니라 'pli_api'가 맞을 수 있습니다.
-# 파일 이름이 pli_api.py라면 CMD ["uvicorn", "pli_api:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "1"] 로 변경하는게 더 정확합니다.
 CMD ["uvicorn", "pli_api:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "1"]

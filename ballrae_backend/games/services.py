@@ -3,7 +3,26 @@ from .models import Game, Inning, Player, AtBat, Pitch
 import json
 from django.db.models import Q
 from ballrae_backend.streaming.redis_client import redis_client
+import requests
 
+def get_pli_from_api(atbat_data: dict):
+    """
+    pli-api 컨테이너로 HTTP POST 요청을 보내 PLI 값을 받아옵니다.
+    """
+    # Docker 네트워크에서 서비스 이름으로 접근합니다.
+    # docker-compose.yml에 설정한 서비스 이름(pli_api)과 포트(8002)를 사용합니다.
+    api_url = "http://pli_api:8002/calculate_pli_raw"
+    headers = {"Content-Type": "application/json"}
+    
+    try:
+        response = requests.post(api_url, headers=headers, json=atbat_data, timeout=5)
+        response.raise_for_status() # HTTP 오류가 발생하면 예외를 발생시킵니다.
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        # API 호출 실패 시 에러 처리
+        print(f"Error calling PLI API: {e}")
+        return {"error": "Failed to get PLI from API"}
+    
 @transaction.atomic
 def save_at_bat_transactionally(data: dict, game_id):
     atbat_data = data['at_bats']
