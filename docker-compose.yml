@@ -69,7 +69,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./pli-api/app:/app/app
-
     
   zookeeper:
     image: bitnami/zookeeper:latest

@@ -1,5 +1,6 @@
 # players/services.py
 from django.db import transaction
+from numpy import rec
 from ballrae_backend.games.models import AtBat, Inning, Game, Player
 from .models import Pitcher, Batter, BatterRecent
 import json
@@ -450,11 +451,20 @@ def get_realtime_batter(pcode):
         if not player:
             season_stats = None
             career_stats = None
+            recent_stats = None
         else:
             # 2025 시즌 기록
             season_2025 = None
             try:
                 season_2025 = Batter.objects.get(player=player, season=2025)
+                
+                # 최근 5경기 기록
+                recent = None
+                try:
+                    recent = BatterRecent.objects.get(batter_id=season_2025)
+                except BatterRecent.DoesNotExist:
+                    pass
+
             except Batter.DoesNotExist:
                 pass
             
@@ -491,6 +501,9 @@ def get_realtime_batter(pcode):
             
             season_stats = calculate_stats(season_2025)
             career_stats = calculate_stats(career)
+            recent_stats = 0
+            if recent:
+                recent_stats = round((recent.hits / recent.ab, 3)) 
         
     except Exception as e:
         season_stats = None
@@ -502,7 +515,8 @@ def get_realtime_batter(pcode):
         "batter": direction,
         "season_2025": season_stats,
         "career": career_stats,
-        "today": today_stats
+        "today": today_stats,
+        "recent_stats": recent_stats
     }
 
     return result
@@ -530,6 +544,7 @@ def get_realtime_pitcher(pcode):
         if not player:
             season_stats = None
             career_stats = None
+            recent_stats = None
         else:
             # 2025 시즌 기록
             season_2025 = None
