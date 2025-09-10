@@ -30,11 +30,6 @@ try:
 except FileNotFoundError:
     raise FileNotFoundError("Data files not found.")
 
-# --- Django 모델 로딩 (DB 연동을 위해 필요) ---
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ballrae_backend.settings')
-django.setup()
-from ballrae_backend.players.models import Batter, BatterRecent
-
 # --- 2. PLI 계산에 필요한 보조 함수들 ---
 def get_win_expectancy(inning, half, outs, runners_code, score_diff):
     is_home = (half == 'bot')
@@ -109,21 +104,31 @@ def get_stadium_temperature(scode: str, target_hour: int, *, auth_key: str, time
         print(f"Error fetching weather data: {e}")
         return None
 
+import requests
+
 def calculate_condition(pcode: str, season: int = 2025):
+    """
+    ballrae_backend의 API를 통해 해당 타자의 시즌/최근 타율을 받아와서 컨디션 가중치 계산
+    """
     try:
-        batter = Batter.objects.get(player__pcode=pcode, season=season)
-        recent = BatterRecent.objects.get(batter=batter)
-        if batter.ab == 0 or recent.ab == 0: return 1.0
-        season_avg = batter.hits / batter.ab
-        recent_avg = recent.hits / recent.ab
-        beta = 0.5
-        condition_index = recent_avg / season_avg
-        final_weight = 1.0 + (condition_index - 1.0) * beta
-        return final_weight
-    except (Batter.DoesNotExist, BatterRecent.DoesNotExist): return 1.0
-    except ZeroDivisionError: return 1.0
+        url = f"http://127.0.0.1:8000/api/players/realtime/?batter={pcode}"
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            # API에서 {"season_avg": 0.312, "recent_avg": 0.250, ...} 이런 식으로 내려온다고 가정
+            season_avg = data.get("season_avg")
+            recent_avg = data.get("recent_avg")
+            if not season_avg or not recent_avg or season_avg == 0:
+                return 1.0
+            beta = 0.5
+            condition_index = recent_avg / season_avg
+            final_weight = 1.0 + (condition_index - 1.0) * beta
+            return final_weight
+        else:
+            print(f"컨디션 API 호출 실패: status={response.status_code}, msg={response.text}")
+            return 1.0
     except Exception as e:
-        print(f"Error calculating condition for pcode {pcode}: {e}")
+        print(f"컨디션 API 호출 중 오류: {e}")
         return 1.0
 
 def streak_weight(loss_streak):
@@ -131,8 +136,11 @@ def streak_weight(loss_streak):
     elif 3 <= loss_streak <= 4: return 0.95
     elif 5 <= loss_streak <= 6: return 0.90
     else: return 0.85
+
 def pinch_weight(is_pinch_hitter): return 1.5 if is_pinch_hitter else 1.0
+
 def ibb_focus_weight(is_ibb): return 2.0 if is_ibb else 1.0
+
 def error_momentum_weight(is_error, is_next_batter):
     if is_error and is_next_batter: return 1.2
     return 1.0
