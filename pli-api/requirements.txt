@@ -1,0 +1,7 @@
+pandas
+fastapi
+uvicorn
+requests
+django
+celery
+dotenv

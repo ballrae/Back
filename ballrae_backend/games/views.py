@@ -12,6 +12,7 @@ import json
 from django.utils import timezone
 from ballrae_backend.games.models import Game
 import pytz
+from .services import get_pli_from_api 
 
 TEAM_CODE = {
     "HH": "한화",
@@ -154,12 +155,20 @@ class GameRelayView(APIView):
         if top_raw or bot_raw:
             data = {}
             if top_raw:
-                data['top'] = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
-                data['top'] = enrich_atbats_with_players(data['top'])
+                top_data = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
+                for atbat in top_data.get('atbats', []):
+                    pli_result = get_pli_from_api(atbat)
+                    atbat['pli_data'] = pli_result
+                
+                data['top'] = enrich_atbats_with_players(top_data)
 
             if bot_raw:
-                data['bot'] = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
-                data['bot'] = enrich_atbats_with_players(data['bot'])
+                bot_data = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
+                for atbat in bot_data.get('atbats', []):
+                    pli_result = get_pli_from_api(atbat)
+                    atbat['pli_data'] = pli_result
+                
+                data['bot'] = enrich_atbats_with_players(bot_data)
 
             away_code = game_id[8:10]
             home_code = game_id[10:12]

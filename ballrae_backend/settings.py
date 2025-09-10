@@ -173,6 +173,22 @@ CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    "update-all-player-stats-daily": {
+        "task": "ballrae_backend.players.tasks.update_all_player_stats",
+        "schedule": crontab(hour=0, minute=30), # 매일 자정(새벽 12시 30분)에 실행
+        # "schedule": crontab(minute='*/1'),
+        "args": (),
+    },
+    "update-all-game-daily": {
+        "task": "ballrae_backend.games.tasks.save_todays_games",
+        "schedule": crontab(hour=0, minute=25), # 매일 자정(새벽 12시 25분)에 실행
+        # "schedule": crontab(minute='*/1'),
+        "args": (),
+    },
+}
 
 USE_TZ = False
 TIME_ZONE = 'Asia/Seoul'

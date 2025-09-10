@@ -875,7 +875,7 @@ def main():
     # get_all_game_datas(2023)
     # get_all_game_datas(2024)
     # get_all_game_datas(2025)
-    # get_game_datas(20230922, 20231130)
+    # get_game_datas(20250830, 20250830)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
