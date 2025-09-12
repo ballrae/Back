@@ -68,7 +68,7 @@ services:
     restart: no
     volumes:
       - ./data:/app/data
-      - ./pli-api/app:/app/app
+      - ./pli-api/app:/app
     
   zookeeper:
     image: bitnami/zookeeper:latest

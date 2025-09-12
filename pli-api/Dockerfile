@@ -24,4 +24,4 @@ COPY app/ .
 # COPY ../data/ /app/data/
 
 # Uvicorn을 사용해 FastAPI 앱을 실행합니다.
-CMD ["uvicorn", "pli_api:app", "--host", "0.0.0.0", "--port", "8002", "--workers", "1"]
+CMD ["uvicorn", "pli_api:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]

@@ -157,7 +157,7 @@ class GameRelayView(APIView):
             if top_raw:
                 top_data = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
                 for atbat in top_data.get('atbats', []):
-                    pli_result = get_pli_from_api(atbat)
+                    pli_result = get_pli_from_api(atbat, game_id)
                     atbat['pli_data'] = pli_result
                 
                 data['top'] = enrich_atbats_with_players(top_data)
@@ -165,7 +165,7 @@ class GameRelayView(APIView):
             if bot_raw:
                 bot_data = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
                 for atbat in bot_data.get('atbats', []):
-                    pli_result = get_pli_from_api(atbat)
+                    pli_result = get_pli_from_api(atbat, game_id)
                     atbat['pli_data'] = pli_result
                 
                 data['bot'] = enrich_atbats_with_players(bot_data)
