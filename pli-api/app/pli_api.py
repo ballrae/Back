@@ -6,8 +6,8 @@ import requests
 import pytz
 from datetime import datetime, timedelta
 import ast
-import os
-import django
+import requests
+import json
 
 # --- 1. 데이터 로딩 (서버 시작 시 한 번만 실행) ---
 try:
@@ -15,7 +15,7 @@ try:
     stadium_data = pd.read_csv('data/stadium.csv')
     
     WE_MAP = {
-        (row['inning_number'], row['half'] == 'bot', row['out'], row['runner_on_1b'], row['runner_on_2b'], row['runner_on_3b'], row['score_diff']): row['win_expectancy']
+        (row['inning_number'], row['half'], row['out'], row['runner_on_1b'], row['runner_on_2b'], row['runner_on_3b'], row['score_diff']): row['win_expectancy']
         for _, row in wpa_data.iterrows()
     }
     stadium_data["weather"] = stadium_data["weather"].apply(
@@ -32,10 +32,11 @@ except FileNotFoundError:
 
 # --- 2. PLI 계산에 필요한 보조 함수들 ---
 def get_win_expectancy(inning, half, outs, runners_code, score_diff):
-    is_home = (half == 'bot')
-    runners = [int(r) for r in runners_code]
-    key = (inning, is_home, outs, runners[0], runners[1], runners[2], score_diff)
-    return WE_MAP.get(key, None)
+    runners = [1 if int(r) > 0 else 0 for r in runners_code]
+    key = (inning, half, outs, runners[0], runners[1], runners[2], score_diff)
+    # print(key)
+    we = WE_MAP.get(key, None)
+    return we
 
 def combine_weights(*weights):
     total_weight = 1.0
@@ -104,20 +105,19 @@ def get_stadium_temperature(scode: str, target_hour: int, *, auth_key: str, time
         print(f"Error fetching weather data: {e}")
         return None
 
-import requests
-
-def calculate_condition(pcode: str, season: int = 2025):
+def calculate_condition(pcode: str, pitcher: str):
     """
     ballrae_backend의 API를 통해 해당 타자의 시즌/최근 타율을 받아와서 컨디션 가중치 계산
     """
     try:
-        url = f"http://127.0.0.1:8000/api/players/realtime/?batter={pcode}"
+        url = f"http://ballrae-backend:8000/api/players/realtime/?batter={pcode}&pitcher={pitcher}"
         response = requests.get(url, timeout=5)
+
         if response.status_code == 200:
             data = response.json()
             # API에서 {"season_avg": 0.312, "recent_avg": 0.250, ...} 이런 식으로 내려온다고 가정
-            season_avg = data.get("season_avg")
-            recent_avg = data.get("recent_avg")
+            season_avg = data.get("season_2025")
+            recent_avg = data.get("recent_stats")
             if not season_avg or not recent_avg or season_avg == 0:
                 return 1.0
             beta = 0.5
@@ -125,7 +125,7 @@ def calculate_condition(pcode: str, season: int = 2025):
             final_weight = 1.0 + (condition_index - 1.0) * beta
             return final_weight
         else:
-            print(f"컨디션 API 호출 실패: status={response.status_code}, msg={response.text}")
+            print(f"컨디션 API 호출 실패: status={response.status_code}")
             return 1.0
     except Exception as e:
         print(f"컨디션 API 호출 중 오류: {e}")
@@ -160,24 +160,28 @@ class AtBatData(BaseModel):
     intentional_walk: bool = False
     error_happened: bool = False
     next_batter_after_error: bool = False
+    pitcher: str
 
 # --- 4. PLI 계산 핵심 로직 ---
 def calculate_single_pli(atbat_data: AtBatData):
-    we_end = get_win_expectancy(
-        atbat_data.inning, atbat_data.half, atbat_data.outs, atbat_data.runners_code, atbat_data.score_diff
-    )
-    base_we = we_end if we_end is not None else 0.5
-    
-    w_env = batting_weather_weight(atbat_data.temp_c)
-    w_personal = combine_weights(calculate_condition(atbat_data.batter_id, 2025))
-    w_situ = combine_weights(
-        streak_weight(atbat_data.loss_streak), pinch_weight(atbat_data.pinch_event),
-        ibb_focus_weight(atbat_data.intentional_walk),
-        error_momentum_weight(atbat_data.error_happened, atbat_data.next_batter_after_error)
-    )
-    w_total = combine_weights(w_env, w_personal, w_situ)
-    pli_val = round(float(base_we) * w_total, 4)
-    return pli_val, base_we, w_total
+    try:
+        we_end = get_win_expectancy(
+            atbat_data.inning, atbat_data.half, atbat_data.outs, atbat_data.runners_code, atbat_data.score_diff
+        )
+        base_we = we_end if we_end is not None else 0.5
+        
+        w_env = batting_weather_weight(atbat_data.temp_c)
+        w_personal = combine_weights(calculate_condition(atbat_data.batter_id, atbat_data.pitcher))
+        w_situ = combine_weights(
+            streak_weight(atbat_data.loss_streak), pinch_weight(atbat_data.pinch_event),
+            ibb_focus_weight(atbat_data.intentional_walk),
+            error_momentum_weight(atbat_data.error_happened, atbat_data.next_batter_after_error)
+        )
+        w_total = combine_weights(w_env, w_personal, w_situ)
+        pli_val = round(float(base_we) * w_total, 4)
+        return pli_val, base_we, w_total
+    except Exception as e:
+        print(e)
 
 # --- 5. API 인스턴스 생성 ---
 app = FastAPI()
@@ -195,43 +199,62 @@ async def calculate_pli_from_raw(raw_data: dict):
         # 원본 데이터를 가공하는 함수를 호출합니다.
         # 이 함수가 모든 가중치 값을 실제 계산해서 반환할 것입니다.
         processed_data = process_raw_atbat_data(raw_data)
+        print(processed_data)
         
         # 가공된 데이터를 AtBatData 모델에 맞게 변환
         atbat_data_model = AtBatData(**processed_data)
         
         # 가공된 데이터를 PLI 계산 함수로 전달
         pli_val, base_we, w_total = calculate_single_pli(atbat_data_model)
-        
+        print(f"계산 결과 확인: pli={pli_val}, base_we={base_we}, w_total={w_total}")
+
         return {
-            "pli": pli_val,
-            "base_we": base_we,
-            "total_weight": w_total,
-            "message": "PLI calculated successfully from raw data."
+            "pli": round(pli_val, 4),
+            "base_we": round(base_we, 4),
+            "total_weight": round(w_total, 4),
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- 8. 원본 데이터 가공 함수 (모든 가중치 함수 호출) ---
-def process_raw_atbat_data(raw_data: dict) -> dict:
+def process_raw_atbat_data(raw_data) -> dict:
+    global next_error 
+    next_error = False
+
+    if type(raw_data) == str:
+        raw_data = json.loads(raw_data)
     outs = int(raw_data.get("out", 0))
     score_str = raw_data.get("score", "0:0")
     away_score, home_score = map(int, score_str.split(':'))
     score_diff = home_score - away_score
     on_base = raw_data.get("on_base", {"base1": "0", "base2": "0", "base3": "0"})
-    runners_code = on_base["base1"] + on_base["base2"] + on_base["base3"]
-    batter_pcode = raw_data.get("actual_batter", {}).get("pcode", None)
-    
-    # 이제 여기에서 모든 함수를 호출해 실제 값을 가져옵니다.
-    stadium_code = raw_data.get("stadium_code")
-    loss_streak = raw_data.get("loss_streak") # 임시 기본값
-    pinch_event = raw_data.get("pinch_event", False)
-    intentional_walk = False # TODO: 원본 데이터에 고의사구 정보가 없으므로 추가 필요
-    error_happened = False # TODO: 원본 데이터에 실책 정보가 없으므로 추가 필요
-    next_batter_after_error = False # TODO: 원본 데이터에 다음 타자 정보가 없으므로 추가 필요
+    runners_code = str(on_base["base1"]) + str(on_base["base2"]) + str(on_base["base3"])
+    # batter_pcode = raw_data.get("actual_batter", {}).get("pcode", None)
+    batter_pcode = raw_data.get("actual_batter")
+    main_result = raw_data.get("main_result")
+    full_result = raw_data.get("full_result")
+    pitcher = raw_data.get("pitcher")
 
+    next_batter_after_error = next_error or False
+
+    # 이제 여기에서 모든 함수를 호출해 실제 값을 가져옵니다.
+    stadium_code = raw_data.get("stadium")
+    loss_streak = raw_data.get("streak") # 임시 기본값
+    pinch_event = True if '대타' in (main_result or full_result) else False
+    intentional_walk = True if '고의 4구' in main_result else False
+    error_happened = True if '실책' in (main_result or full_result) else False
+
+    # 전역 변수로 next_error 상태를 저장하여 다음 함수 호출 시에도 사용할 수 있도록 함
+    # 함수 외부에서 선언된 전역 변수를 수정
+    if error_happened: 
+        next_error = True
+    else: 
+        next_error = False
+    
     # 실제 온도 가져오기
-    # API 키는 환경 변수 등 안전한 곳에서 가져와야 합니다.
-    weather_temp = get_stadium_temperature(stadium_code, target_hour=datetime.now().hour, auth_key="YOUR_API_KEY")
+    WEATHER_API_KEY = 'iVHg1Rm_SGuR4NUZv3hrLw'
+    weather_temp = get_stadium_temperature(stadium_code, target_hour=datetime.now().hour, auth_key=WEATHER_API_KEY)
 
     return {
         "inning": raw_data.get("inning"),
@@ -246,5 +269,6 @@ def process_raw_atbat_data(raw_data: dict) -> dict:
         "pinch_event": pinch_event,
         "intentional_walk": intentional_walk,
         "error_happened": error_happened,
-        "next_batter_after_error": next_batter_after_error
+        "next_batter_after_error": next_batter_after_error,
+        "pitcher": pitcher
     }

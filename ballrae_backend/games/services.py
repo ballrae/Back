@@ -6,13 +6,40 @@ from django.db.models import Q
 from ballrae_backend.streaming.redis_client import redis_client
 import requests
 from datetime import datetime, timezone
+from ballrae_backend.teams.models import Team
 
-def get_pli_from_api(atbat_data: dict):
+def get_stadium(team):
+    # 팀 코드를 스타디움 코드로 매핑하는 딕셔너리
+    team_to_stadium_map = {
+        "LG": "JS",  # LG 트윈스 - 잠실야구장
+        "KT": "SW",  # KT 위즈 - 수원KT위즈파크
+        "SL": "MH",  # SSG 랜더스 - 인천SSG랜더스필드
+        "NC": "CW",  # NC 다이노스 - 창원NC파크
+        "DS": "JS",  # 두산 베어스 - 잠실야구장
+        "KA": "GJ",  # KIA 타이거즈 - 광주기아챔피언스필드
+        "LT": "SJ",  # 롯데 자이언츠 - 부산사직야구장
+        "SS": "DG",  # 삼성 라이온즈 - 대구삼성라이온즈파크
+        "HH": "DJ",  # 한화 이글스 - 대전한화생명이글스파크
+        "HE": "GC",  # 키움 히어로즈 - 고척스카이돔
+    }
+    
+    return team_to_stadium_map.get(team)  # 기본값은 잠실야구장
+
+def get_pli_from_api(atbat_data: dict, game_id: str):
     """
     pli-api 컨테이너로 HTTP POST 요청을 보내 PLI 값을 받아옵니다.
     """
-    api_url = "http://pli_api:8002/calculate_pli_raw"
+    api_url = "http://pli-api:8002/calculate_pli_raw"
     headers = {"Content-Type": "application/json"}
+
+    offe_inn = game_id[8:10]
+    if atbat_data.get('half') == 'bot': offe_inn = game_id[10:12]
+
+    streak = Team.objects.filter(id=offe_inn).values_list('consecutive_streak', flat=True).first()
+
+    atbat_data['team'] = offe_inn
+    atbat_data['stadium'] = get_stadium(game_id[10:12])
+    atbat_data['streak'] = streak
     
     try:
         response = requests.post(api_url, headers=headers, json=atbat_data, timeout=5)
