@@ -12,7 +12,7 @@ import json
 from django.utils import timezone
 from ballrae_backend.games.models import Game
 import pytz
-from .services import get_pli_from_api 
+from .services import get_pli_batch_and_cache
 
 TEAM_CODE = {
     "HH": "한화",
@@ -140,7 +140,6 @@ def _defense_positions_with_names(game_id: str, code) -> dict:
 
     return enrich(def_map)
     
-
 class GameRelayView(APIView):
     def get(self, request, game_id, inning):
         inning = int(inning)
@@ -154,20 +153,38 @@ class GameRelayView(APIView):
         # Redis에 하나라도 있으면 실시간 응답
         if top_raw or bot_raw:
             data = {}
+            # --- top 처리: atbats 전체를 한 번에 배치 요청/캐시 처리 ---
             if top_raw:
                 top_data = json.loads(top_raw.decode() if isinstance(top_raw, bytes) else top_raw)
-                for atbat in top_data.get('atbats', []):
-                    pli_result = get_pli_from_api(atbat, game_id)
+                atbats_top = top_data.get('atbats', []) or []
+
+                try:
+                    pli_results_top = get_pli_batch_and_cache(atbats_top, game_id)
+                except Exception as e:
+                    # 배치 함수 자체에 문제가 생기면 안전하게 에러 마킹
+                    print("get_pli_batch_and_cache error (top):", e)
+                    pli_results_top = [{"error": "pli_fetch_failed"} for _ in atbats_top]
+
+                # 각 atbat에 pli_data 붙임 (원본 atbat dict이 수정됨)
+                for atbat, pli_result in zip(atbats_top, pli_results_top):
                     atbat['pli_data'] = pli_result
-                
+
                 data['top'] = enrich_atbats_with_players(top_data)
 
+            # --- bot 처리: 동일하게 배치/캐시 사용 ---
             if bot_raw:
                 bot_data = json.loads(bot_raw.decode() if isinstance(bot_raw, bytes) else bot_raw)
-                for atbat in bot_data.get('atbats', []):
-                    pli_result = get_pli_from_api(atbat, game_id)
+                atbats_bot = bot_data.get('atbats', []) or []
+
+                try:
+                    pli_results_bot = get_pli_batch_and_cache(atbats_bot, game_id)
+                except Exception as e:
+                    print("get_pli_batch_and_cache error (bot):", e)
+                    pli_results_bot = [{"error": "pli_fetch_failed"} for _ in atbats_bot]
+
+                for atbat, pli_result in zip(atbats_bot, pli_results_bot):
                     atbat['pli_data'] = pli_result
-                
+
                 data['bot'] = enrich_atbats_with_players(bot_data)
 
             away_code = game_id[8:10]
@@ -186,7 +203,7 @@ class GameRelayView(APIView):
                 'data': data
             }, status=status.HTTP_200_OK)
 
-        # 없으면 DB 조회
+        # 없으면 DB 조회 (기존 코드 유지)
         try:
             game = Game.objects.prefetch_related('innings__atbats__pitches').get(id=game_id)
         except Game.DoesNotExist:
