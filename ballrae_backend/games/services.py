@@ -10,6 +10,10 @@ from datetime import datetime, timezone
 import hashlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # ---------- 기존 get_stadium (변경 없음) ----------
 def get_stadium(team):
@@ -29,10 +33,15 @@ def get_stadium(team):
     return team_to_stadium_map.get(team)
 
 # ---------- 설정: 필요 시 조정 ----------
+# 타임아웃/병렬 관련 설정 — 운영환경에 맞게 조정 가능
+PARALLEL_WORKERS = 3        # 병렬 호출 수를 많이 낮춤 (원래 8 → 3 권장)
 PLI_API_SINGLE_URL = "http://pli-api:8002/calculate_pli_raw"
-PLI_API_BATCH_URL = "http://pli-api:8002/calculate_pli_raw_batch"  # pli-api에 배치 엔드포인트가 있다면 사용
-PLI_CACHE_TTL = 60 * 60  # 초 (기본 1시간). 필요 시 줄이거나 늘리세요.
-PARALLEL_WORKERS = 8      # 배치가 불가할 때 사용할 최대 스레드 수(pli-api에 부하를 고려해 적절히 설정)
+PLI_CACHE_TTL = 60 * 60     # 정상 결과 TTL
+PLI_ERROR_TTL = 10          # 에러는 짧게 캐시
+REQUEST_TIMEOUT = 15        # individual request read timeout (초) — 6 → 15로 증가
+MAX_RETRIES = 2             # 네트워크/일시오류 시 재시도 횟수 (총 시도 = MAX_RETRIES + 1)
+BACKOFF_FACTOR = 0.5        # 지수 백오프 계수 (0.5, 1, 2 초 등)
+LOCK_TTL = 8                # singleflight 락 TTL (초)
 
 # ---------- 캐시 키 생성 유틸 ----------
 def _pli_cache_key(payload: dict, game_id: str) -> str:
@@ -68,6 +77,8 @@ def get_pli_from_api(atbat_data: dict, game_id: str, timeout: int = 5) -> Dict[s
         payload['streak'] = Team.objects.filter(id=offe_inn).values_list('consecutive_streak', flat=True).first()
     except Exception:
         payload['streak'] = None
+    
+    print(payload)
 
     cache_key = _pli_cache_key(payload, game_id)
     cached = redis_client.get(cache_key)
@@ -95,10 +106,55 @@ def get_pli_from_api(atbat_data: dict, game_id: str, timeout: int = 5) -> Dict[s
 
     return result
 
-# ---------- 병렬 단일 호출 (배치 엔드포인트가 없을 때 사용되는 폴백) ----------
-def _fetch_single_pli(payload: dict, game_id: str, timeout: int = 5) -> Dict[str, Any]:
-    """internal helper: payload는 team/stadium/streak이 채워진 상태여야 함"""
+def _requests_session_with_retries(total_retries=MAX_RETRIES, backoff_factor=BACKOFF_FACTOR):
+    session = requests.Session()
+    retries = Retry(
+        total=total_retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=frozenset(["POST", "GET", "OPTIONS"])
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+def _acquire_lock(cache_key: str, wait_max=3.0, step=0.05):
+    lock_key = f"lock:{cache_key}"
+    start = time.time()
+    got = redis_client.set(lock_key, "1", nx=True, ex=LOCK_TTL)
+    if got:
+        return True
+    while time.time() - start < wait_max:
+        time.sleep(step)
+        # 누군가 작업 완료해서 캐시가 생겼다면 대기 중단
+        if redis_client.get(cache_key):
+            return False
+        got = redis_client.set(lock_key, "1", nx=True, ex=LOCK_TTL)
+        if got:
+            return True
+    # 마지막 시도
+    got = redis_client.set(lock_key, "1", nx=True, ex=LOCK_TTL)
+    return bool(got)
+
+def _release_lock(cache_key: str):
+    try:
+        redis_client.delete(f"lock:{cache_key}")
+    except Exception:
+        pass
+
+def _fetch_single_pli(payload: dict, game_id: str, timeout: int = REQUEST_TIMEOUT) -> Dict[str, Any]:
+    """
+    안전한 단일 PLI 호출:
+    - 캐시 체크
+    - singleflight 락으로 중복 요청 억제
+    - requests.Session + Retry 사용 (총 MAX_RETRIES 재시도)
+    - 응답 지연 시 timeout을 늘려 기다림
+    - 성공만 장기 캐시, 에러는 짧게 혹은 캐시하지 않음
+    """
     cache_key = _pli_cache_key(payload, game_id)
+
+    # 1) 캐시 우선 확인
     cached = redis_client.get(cache_key)
     if cached:
         try:
@@ -106,45 +162,83 @@ def _fetch_single_pli(payload: dict, game_id: str, timeout: int = 5) -> Dict[str
         except Exception:
             pass
 
+    # 2) singleflight 락 시도: 락을 얻으면 우리가 호출, 못 얻으면 캐시 채워질 때까지 기다렸다가 캐시 쓰기
+    got_lock = _acquire_lock(cache_key)
+    if not got_lock:
+        # 누군가 채우는 중이면 캐시 재확인
+        cached = redis_client.get(cache_key)
+        if cached:
+            try:
+                return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+            except Exception:
+                pass
+        # 락 못 얻고 캐시도 없으면 마지막 수단으로 호출 시도 (but still limited)
+        # continue to call
+
+    session = _requests_session_with_retries()
     headers = {"Content-Type": "application/json"}
+
     try:
-        r = requests.post(PLI_API_SINGLE_URL, headers=headers, json=payload, timeout=timeout)
-        r.raise_for_status()
-        res = r.json()
+        # 디버그 로그 (운영시엔 level 체크해서 끌 것)
+        try:
+            print("PLI CALL payload:", json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            print("PLI CALL payload (unserializable)")
+
+        resp = session.post(PLI_API_SINGLE_URL, headers=headers, json=payload, timeout=timeout)
+        # 상태/본문 로그 (디버그)
+        print("PLI CALL status:", getattr(resp, "status_code", None))
+        try:
+            text = resp.text
+            print("PLI CALL resp text len:", len(text))
+        except Exception:
+            text = None
+
+        resp.raise_for_status()
+        result = resp.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error calling PLI API (parallel single): {e}")
-        res = {"error": "Failed to get PLI from API"}
+        print("Error calling PLI API (single, retry enabled):", repr(e))
+        # 실패 시 짧게 캐시(혹은 캐시하지 않음)
+        error_obj = {"error": "Failed to get PLI from API", "detail": str(e)}
+        try:
+            redis_client.setex(cache_key, PLI_ERROR_TTL, json.dumps(error_obj, ensure_ascii=False))
+        except Exception:
+            pass
+        result = error_obj
+    finally:
+        # 락 해제 (락을 획득했든 못 했든 안전하게 호출)
+        try:
+            _release_lock(cache_key)
+        except Exception:
+            pass
 
-    try:
-        redis_client.setex(cache_key, PLI_CACHE_TTL, json.dumps(res, ensure_ascii=False))
-    except Exception as e:
-        print("Redis setex error (parallel single):", e)
+    # 성공이면 장기 캐시
+    if isinstance(result, dict) and "error" not in result:
+        try:
+            redis_client.setex(cache_key, PLI_CACHE_TTL, json.dumps(result, ensure_ascii=False))
+        except Exception as e:
+            print("Redis setex error after success:", e)
 
-    return res
+    return result
 
-# 교체할 get_pli_batch_and_cache 함수
-def get_pli_batch_and_cache(atbats: List[dict], game_id: str, batch_timeout: int = 6) -> List[Dict[str, Any]]:
-    """
-    개선된/견고한 버전:
-    - 원본 atbats는 즉시 수정하지 않음 (함수 끝에서 한 번에 부착)
-    - 캐시 히트/미스 인덱스 매핑을 명확히 함
-    - 배치 실패 시 병렬 폴백
-    - 항상 atbats 길이와 같은 길이의 리스트 반환
-    """
+def get_pli_batch_and_cache(atbats: List[dict], game_id: str, timeout_per_request: int = REQUEST_TIMEOUT) -> List[Dict[str, Any]]:
     n = len(atbats)
-    # 결과 자리표시자
     results: List[Optional[Dict[str, Any]]] = [None] * n
-
-    # 요청 대상 (캐시 미스)와 그 원래 인덱스를 보관
     to_request_payloads: List[dict] = []
-    to_request_orig_indices: List[int] = []
+    to_request_indices: List[int] = []
 
-    # 1) payload 준비 및 캐시 검사 (원본 atbat은 수정하지 않음)
+    # 1) payload 준비 및 캐시 검사
     for idx, atbat in enumerate(atbats):
-        payload = dict(atbat)  # shallow copy
+        payload = dict(atbat)
         offe_inn = game_id[8:10]
         if payload.get('half') == 'bot':
             offe_inn = game_id[10:12]
+
+        # pitch_sequence == None → 대타 상황 → PLI 계산 생략
+        if payload.get('strike_zone') is None:
+            results[idx] = None  # 명시적으로 None 저장
+            continue
+
         payload['team'] = offe_inn
         payload['stadium'] = get_stadium(game_id[10:12])
         try:
@@ -159,76 +253,40 @@ def get_pli_batch_and_cache(atbats: List[dict], game_id: str, batch_timeout: int
                 results[idx] = json.loads(cached.decode() if isinstance(cached, bytes) else cached)
                 continue
             except Exception:
-                # 캐시 파싱 실패면 무시하고 요청 대상으로 넣음
                 pass
-
-        # 캐시 미스인 경우 요청 리스트 추가
         to_request_payloads.append(payload)
-        to_request_orig_indices.append(idx)
+        to_request_indices.append(idx)
 
-    # 2) 배치 요청 (가능하면)
+    # 2) 캐시 미스만 병렬 호출 (스레드풀)
     if to_request_payloads:
-        batch_succeeded = False
-        try:
-            batch_body = {"game_id": game_id, "atbats": to_request_payloads}
-            headers = {"Content-Type": "application/json"}
-            resp = requests.post(PLI_API_BATCH_URL, headers=headers, json=batch_body, timeout=batch_timeout)
-            resp.raise_for_status()
-            batch_res = resp.json()
+        max_workers = min(PARALLEL_WORKERS, max(1, len(to_request_payloads)))
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            future_to_local_idx = {}
+            for local_idx, payload in enumerate(to_request_payloads):
+                future = ex.submit(_fetch_single_pli, payload, game_id, timeout_per_request)
+                future_to_local_idx[future] = local_idx
+            for fut in as_completed(future_to_local_idx):
+                local_idx = future_to_local_idx[fut]
+                orig_idx = to_request_indices[local_idx]
+                try:
+                    res = fut.result()
+                except Exception as e:
+                    print("Parallel fetch exception:", e)
+                    res = {"error": "pli_fetch_failed", "detail": str(e)}
+                results[orig_idx] = res
 
-            # 안전성 체크: 길이와 타입 확인
-            if isinstance(batch_res, list) and len(batch_res) == len(to_request_payloads):
-                # batch 결과를 원래 인덱스 위치에 채움
-                for local_idx, res in enumerate(batch_res):
-                    orig_idx = to_request_orig_indices[local_idx]
-                    results[orig_idx] = res
-                    # 캐시 저장 (payload는 to_request_payloads[local_idx])
-                    try:
-                        redis_client.setex(_pli_cache_key(to_request_payloads[local_idx], game_id), PLI_CACHE_TTL, json.dumps(res, ensure_ascii=False))
-                    except Exception as e:
-                        print("Redis setex error (batch store):", e)
-                batch_succeeded = True
-            else:
-                raise ValueError("batch response invalid")
-        except Exception as e:
-            print("Batch call failed or invalid. Falling back to parallel single calls. Error:", e)
-            batch_succeeded = False
-
-        # 3) 배치 실패 시 병렬 단일 호출로 폴백
-        if not batch_succeeded:
-            # to_request_payloads와 to_request_orig_indices 길이는 동일
-            max_workers = min(PARALLEL_WORKERS, max(1, len(to_request_payloads)))
-            with ThreadPoolExecutor(max_workers=max_workers) as ex:
-                future_to_local_idx = {}
-                for local_idx, payload in enumerate(to_request_payloads):
-                    future = ex.submit(_fetch_single_pli, payload, game_id)
-                    future_to_local_idx[future] = local_idx
-
-                for fut in as_completed(future_to_local_idx):
-                    local_idx = future_to_local_idx[fut]
-                    orig_idx = to_request_orig_indices[local_idx]
-                    try:
-                        res = fut.result()
-                    except Exception as e2:
-                        print("Parallel fetch exception:", e2)
-                        res = {"error": "pli_fetch_failed"}
-                    results[orig_idx] = res
-                    # 캐시는 _fetch_single_pli 내부에서 이미 저장됨
-
-    # 4) 모든 None은 에러 오브젝트로 채움
+    # 3) None 채우기 (단, pitch_sequence==None 은 그대로 둠)
     for i, r in enumerate(results):
-        if r is None:
+        if atbats[i].get('strike_zone') is None:
+            results[i] = {"pli": "unavailable"}
+        elif r is None and atbats[i].get('pitch_sequence') is not None:
             results[i] = {"error": "pli_unavailable"}
 
-    # 5) 원본 atbats에 일괄적으로 pli_data 붙임 (호출자 코드와 동일한 결과 보장)
+    # 4) atbat에 부착
     for atbat, res in zip(atbats, results):
         atbat['pli_data'] = res
 
     return results
-
-# ---------------------------------------------------------------------
-# 아래는 기존에 있던 DB 저장/계산 함수들을 그대로 유지 (원본 코드 복붙)
-# ---------------------------------------------------------------------
 
 @transaction.atomic
 def save_at_bat_transactionally(data: dict, game_id):

@@ -811,7 +811,7 @@ def get_game_datas(start_date, end_date):
         if game_done: continue
 
 def realtime_test():
-    today = '20250913'
+    today = '20250914'
     game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)   
     new_game_id = []
 
