@@ -179,7 +179,11 @@ def calculate_single_pli(atbat_data: AtBatData):
         )
         w_total = combine_weights(w_env, w_personal, w_situ)
         pli_val = round(float(base_we) * w_total, 4)
-        return pli_val, base_we, w_total
+
+        if atbat_data.half == "top":
+            return (1-pli_val), (1-base_we), w_total
+        else:
+            return pli_val, base_we, w_total
     except Exception as e:
         print(e)
 
