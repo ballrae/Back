@@ -573,7 +573,7 @@ def crawling(game, use_redis=False):
                 relays = data["result"]["textRelayData"]["textRelays"]
             except Exception as e:
                 print(f"[{game}] {inning}회 Error: textRelays 누락 → 경기 시작 전")
-                return None, False  # 경기 시작 전이므로 종료 아님          
+                return None, False, None  # 경기 시작 전이므로 종료 아님          
 
             try:
                 home_lineup = data["result"]["textRelayData"]['homeLineup']
@@ -640,7 +640,7 @@ def crawling(game, use_redis=False):
                 print(inning)
                 result['game_over'] = game_done
                 mark_game_status(game_id, 'done')
-                return result, game_done
+                return result, game_done, merged_entries
 
         except KeyError as e:
             missing_key = e.args[0] if e.args else '키 없음'
@@ -659,7 +659,7 @@ def crawling(game, use_redis=False):
             print(f"[{game}] {inning}회 요청 오류 (Exception): {e}")
             continue
 
-    return result, game_done
+    return result, game_done, merged_entries
 
 def crawl_game_loop(game_id, topic, producer):
     previous_data = None
@@ -668,7 +668,7 @@ def crawl_game_loop(game_id, topic, producer):
 
     while True:
         try:
-            result, game_done = crawling(game_id, True)
+            result, game_done, _ = crawling(game_id, True)
             print(game_done)
 
             if result:
@@ -747,7 +747,7 @@ def get_all_game_datas(select_year):
         game_id = f"{date}{away_team}{home_team}{dh}{year}"
         print(game_id)
 
-        new_data, game_done = crawling(game_id)
+        new_data, game_done, merged_entries = crawling(game_id)
         # topic = year
         # producer = KafkaProducer(
         #     bootstrap_servers='kafka:9092',
@@ -760,7 +760,7 @@ def get_all_game_datas(select_year):
                 if key in ['game_over', 'home_lineup', 'away_lineup', 'game_id']: continue
                 else:
                     # print([key])
-                    save_at_bat_transactionally(new_data[key], game)
+                    save_at_bat_transactionally(new_data[key], game, merged_entries)
         else:
             print("- 새 데이터 없음")
 
@@ -791,7 +791,7 @@ def get_game_datas(start_date, end_date):
         game_id = f"{date}{away_team}{home_team}{dh}{year}"
         print(game_id)
 
-        new_data, game_done = crawling(game_id)
+        new_data, game_done, merged_entries = crawling(game_id)
         # topic = year
         # producer = KafkaProducer(
         #     bootstrap_servers='kafka:9092',
@@ -804,7 +804,7 @@ def get_game_datas(start_date, end_date):
                 if key in ['game_over', 'home_lineup', 'away_lineup', 'game_id']: continue
                 else:
                     # print([key])
-                    save_at_bat_transactionally(new_data[key], game)
+                    save_at_bat_transactionally(new_data[key], game, merged_entries)
         else:
             print("- 새 데이터 없음")
 
@@ -869,13 +869,13 @@ def test():
 def main():
     # test()
     # realtime_test()
-    get_realtime_data()
-    # get_all_game_datas(2021)
-    # get_all_game_datas(2022)
-    # get_all_game_datas(2023)
-    # get_all_game_datas(2024)
-    # get_all_game_datas(2025)
-    # get_game_datas(20250830, 20250830)
+    # get_realtime_data()
+
+    get_all_game_datas(2023)
+    get_all_game_datas(2024)
+    get_all_game_datas(2025)
+
+    # get_game_datas(20250719, 20250719)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":

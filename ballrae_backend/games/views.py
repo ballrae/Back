@@ -213,10 +213,20 @@ class GameRelayView(APIView):
         if not inning_objs:
             return Response({'message': f'{inning}회 이닝 정보가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
-        inning_data = {
-            'top': InningSerializer(inning_objs[0]).data,
-            'bot': InningSerializer(inning_objs[1]).data
-        }
+        try:
+            inning_data = {
+                'top': InningSerializer(inning_objs[0]).data,
+                'bot': InningSerializer(inning_objs[1]).data
+            }
+        except IndexError:
+            return Response({
+                'status': 'OK_ARCHIVED',
+                'message': f'{inning}회 이닝 정보 (과거 경기)',
+                'data': {
+                    'top': InningSerializer(inning_objs[0]).data
+                    }
+            })
+
 
         return Response({
             'status': 'OK_ARCHIVED',
@@ -314,7 +324,6 @@ class PlayerTodayStatsView(APIView):
             homeruns = atbats.filter(result="홈런").count()
             walks = atbats.filter(result__in=["볼넷", "사구", "고의4구"]).count()
             strikeouts = atbats.filter(result="삼진").count()
-            rbi = atbats.aggregate(rbi_sum=models.Sum("rbi"))["rbi_sum"] or 0
 
             avg = round(hits / ab, 3) if ab else 0.0
             pa = ab + walks
@@ -326,14 +335,12 @@ class PlayerTodayStatsView(APIView):
                 "homeruns": homeruns,
                 "walks": walks,
                 "strikeouts": strikeouts,
-                "rbi": rbi,
                 "avg": avg,
                 "obp": obp,
                 "detail": [
                     {
                         "inning": atbat.inning,
                         "result": atbat.result,
-                        "rbi": atbat.rbi,
                         "description": atbat.description
                     }
                     for atbat in atbats.order_by("inning")

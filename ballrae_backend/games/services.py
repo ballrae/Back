@@ -289,7 +289,7 @@ def get_pli_batch_and_cache(atbats: List[dict], game_id: str, timeout_per_reques
     return results
 
 @transaction.atomic
-def save_at_bat_transactionally(data: dict, game_id):
+def save_at_bat_transactionally(data: dict, game_id, merged_dict):
     atbat_data = data['at_bats']
 
     game, _ = Game.objects.get_or_create(id=game_id)
@@ -307,16 +307,20 @@ def save_at_bat_transactionally(data: dict, game_id):
             pitcher = atbat.get('pitcher', [])
 
             if pitcher:
+                actual_batter = atbat.get('actual_batter')
                 batter, _ = Player.objects.get_or_create(
+                    pcode=actual_batter,
                     position='B',
                     team_id=b_id,
-                    pcode=atbat.get('actual_batter')
+                    player_name = merged_dict.get(actual_batter)
                 )
 
+                # 투수 이름 가져오기
                 pitcher, _ = Player.objects.get_or_create(
+                    pcode=atbat.get('pitcher'),
                     position='P',
                     team_id=p_id,
-                    pcode=atbat.get('pitcher')
+                    player_name = merged_dict.get(atbat.get('pitcher'))
                 )
         
             exists = AtBat.objects.filter(
