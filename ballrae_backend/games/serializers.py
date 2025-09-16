@@ -23,24 +23,38 @@ class AtBatSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_actual_player(self, obj):
-        return self._get_player_data(obj.actual_player)
+        if not obj.actual_player:
+            return None
+        player = Player.objects.filter(pcode=obj.actual_player).first()
+        return {
+            "id": player.id,
+            "pcode": player.pcode,
+            "player_name": player.player_name,
+            "team_id": player.team_id
+        }
 
     def get_original_player(self, obj):
-        return self._get_player_data(obj.original_player)
+        if not obj.original_player:
+            return None
+        player = Player.objects.filter(pcode=obj.original_player).first()
+        return {
+            "id": player.id,
+            "pcode": player.pcode,
+            "player_name": player.player_name,
+            "team_id": player.team_id
+        }
 
     def get_pitcher(self, obj):
-        return self._get_player_data(obj.pitcher)
-
-    def _get_player_data(self, pcode):
-        try:
-            player = Player.objects.get(pcode=pcode)
-            return {
-                "id": player.id,
-                "pcode": player.pcode,
-                "player_name": player.player_name,
-            }
-        except Player.DoesNotExist:
+        if not obj.pitcher:
             return None
+        player = Player.objects.filter(pcode=obj.pitcher).first()
+        return {
+            "id": player.id,
+            "pcode": player.pcode,
+            "player_name": player.player_name,
+            "team_id": player.team_id
+        }
+
 
 class InningSerializer(serializers.ModelSerializer):
     atbats = AtBatSerializer(many=True, read_only=True)
