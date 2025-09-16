@@ -536,7 +536,7 @@ def create_merged_dict(entries, game_id, original_home_code, original_away_code)
                     models.Player.objects.create(
                         pcode=pcode,
                         player_name=name,
-                        team_id=team_id,
+                        team_id=team_map(team_id),
                         position=position
                     )
                     existing_pcodes.add(pcode)
@@ -883,11 +883,11 @@ def main():
     # realtime_test()
     # get_realtime_data()
 
-    get_all_game_datas(2025)
-    get_all_game_datas(2024)
-    get_all_game_datas(2023)
+    # get_all_game_datas(2025)
+    # get_all_game_datas(2024)
+    # get_all_game_datas(2023)
 
-    # get_game_datas(20250323, 20250323)
+    get_game_datas(20250827, 20250827)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
