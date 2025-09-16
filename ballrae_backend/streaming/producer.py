@@ -338,138 +338,148 @@ def extract_at_bats(relays: List[Dict], inning: int, half: str, merged_dict: Dic
     pending_sub = None
     current_at_bat_key = None
 
-    
-    for r in relays:
-        options = r.get("textOptions", [])
-        pitch_sequence, result, strike_zone = process_pitch_and_events(r)
-        actual_batter, original_batter, bat_order, pitcher = None, None, None, None
-        out, score = options[0].get('currentGameState').get('out'), None
-        base1, base2, base3 = None, None, None
+    try:
+        for r in relays:
+            options = r.get("textOptions", [])
+            pitch_sequence, result, strike_zone = process_pitch_and_events(r)
+            actual_batter, original_batter, bat_order, pitcher = None, None, None, None
+            out, score = options[0].get('currentGameState').get('out'), None
+            base1, base2, base3 = None, None, None
 
-        for opt in options:
-            text = opt.get("text", "")
-            game_state = opt.get('currentGameState', {})
+            for opt in options:
+                text = opt.get("text", "")
+                game_state = opt.get('currentGameState', {})
 
-            pitcher = game_state.get('pitcher')
-            actual_batter = game_state.get('batter')
-            score = f"{game_state.get('awayScore')}:{game_state.get('homeScore')}"
-            base1, base2, base3 = game_state.get('base1'), game_state.get('base2'), game_state.get('base3')
+                pitcher = game_state.get('pitcher')
+                actual_batter = game_state.get('batter')
+                score = f"{game_state.get('awayScore')}:{game_state.get('homeScore')}"
+                base1, base2, base3 = game_state.get('base1'), game_state.get('base2'), game_state.get('base3')
 
-            # 타자 정보 파싱
-            batter_info = opt.get("batterRecord", {})
-            # actual_batter = batter_info.get("name", actual_batter)
-            # actual_batter = batter_info.get("name", actual_batter)
-            # original_batter = merged_dict.get(original_batter, '')
-            # actual_batter = merged_dict.get(actual_batter)
-            bat_order = batter_info.get("batOrder", bat_order)
+                # 타자 정보 파싱
+                batter_info = opt.get("batterRecord", {})
+                # actual_batter = batter_info.get("name", actual_batter)
+                # actual_batter = batter_info.get("name", actual_batter)
+                # original_batter = merged_dict.get(original_batter, '')
+                # actual_batter = merged_dict.get(actual_batter)
+                bat_order = batter_info.get("batOrder", bat_order)
 
-        # appearance number 계산
-        merge_key = (inning, half, bat_order, actual_batter)
-        appearance_counter[merge_key] += 1
-        appearance_number = appearance_counter[merge_key]
-        pitch_merge_key = (bat_order, actual_batter, appearance_number)
+            # appearance number 계산
+            merge_key = (inning, half, bat_order, actual_batter)
+            appearance_counter[merge_key] += 1
+            appearance_number = appearance_counter[merge_key]
+            pitch_merge_key = (bat_order, actual_batter, appearance_number)
 
-        # pending_sub 처리
-        if pending_sub and pending_sub["actual_batter"] == actual_batter:
-            pending_sub["appearance_number"] = appearance_number
-            at_bats.append(pending_sub)
-            pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
-            pending_sub = None
+            # pending_sub 처리
+            if pending_sub and pending_sub["actual_batter"] == actual_batter:
+                pending_sub["appearance_number"] = appearance_number
+                at_bats.append(pending_sub)
+                pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
+                pending_sub = None
 
-        # 타석 병합 또는 새 타석 생성
-        if pitch_merge_key in pitch_merge_tracker:
-            idx = pitch_merge_tracker[pitch_merge_key]
-            if at_bats[idx].get("pitch_sequence"):
-                at_bats[idx]["pitch_sequence"].extend(pitch_sequence)
+            # 타석 병합 또는 새 타석 생성
+            if pitch_merge_key in pitch_merge_tracker:
+                idx = pitch_merge_tracker[pitch_merge_key]
+                if at_bats[idx].get("pitch_sequence"):
+                    at_bats[idx]["pitch_sequence"].extend(pitch_sequence)
+                else:
+                    at_bats[idx]["pitch_sequence"] = pitch_sequence
+
+                if result and result not in at_bats[idx]["full_result"]:
+                    at_bats[idx]["full_result"] += f"|{result}"
+                    at_bats[idx]["full_result"] = at_bats[idx]["full_result"].strip("|")
+
+            elif actual_batter is not None and (not pitch_sequence and not result):
+                continue
+
             else:
-                at_bats[idx]["pitch_sequence"] = pitch_sequence
+                new_atbat = {
+                    "inning": inning,
+                    "half": half,
+                    "pitcher": pitcher,
+                    "bat_order": bat_order,
+                    "original_batter": None,
+                    "actual_batter": actual_batter,
+                    "out": out,
+                    "score": score,
+                    "on_base": {
+                        "base1": base1,
+                        "base2": base2,
+                        "base3": base3
+                    },
+                    "appearance_number": appearance_number,
+                    "strike_zone": strike_zone,
+                    "full_result": result or "(진행 중)",
+                    "pitch_sequence": pitch_sequence
+                }
 
-            if result and result not in at_bats[idx]["full_result"]:
-                at_bats[idx]["full_result"] += f"|{result}"
-                at_bats[idx]["full_result"] = at_bats[idx]["full_result"].strip("|")
+                at_bats.append(new_atbat)
+                pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
+                current_at_bat_key = pitch_merge_key
 
-        else:
-            new_atbat = {
-                "inning": inning,
-                "half": half,
-                "pitcher": pitcher,
-                "bat_order": bat_order,
-                "original_batter": None,
-                "actual_batter": actual_batter,
-                "out": out,
-                "score": score,
-                "on_base": {
-                    "base1": base1,
-                    "base2": base2,
-                    "base3": base3
-                },
-                "appearance_number": appearance_number,
-                "strike_zone": strike_zone,
-                "full_result": result or "(진행 중)",
-                "pitch_sequence": pitch_sequence
-            }
+            # main_result 추출 (배터 결과를 어디서든 찾아 추출, '대타 ...'와 배터 라인은 full_result에서 제거)
+            actual_batter_name = merged_dict.get(actual_batter)
 
-            at_bats.append(new_atbat)
-            pitch_merge_tracker[pitch_merge_key] = len(at_bats) - 1
-            current_at_bat_key = pitch_merge_key
+            if result and actual_batter_name:
+                split_parts = [p.strip() for p in result.split("|") if p.strip()]
+                main_play = None
+                remaining_parts = []
 
-        # main_result 추출 (배터 결과를 어디서든 찾아 추출, '대타 ...'와 배터 라인은 full_result에서 제거)
-        actual_batter_name = merged_dict.get(actual_batter)
+                for s in split_parts:
+                    # 모든 대타 문구는 full_result에서 제외 (단독 문구만)
+                    if s.startswith("대타"):
+                        continue
 
-        if result and actual_batter_name:
-            split_parts = [p.strip() for p in result.split("|") if p.strip()]
-            main_play = None
-            remaining_parts = []
-
-            for s in split_parts:
-                # 모든 대타 문구는 full_result에서 제외 (단독 문구만)
-                if s.startswith("대타"):
-                    continue
-
-                if actual_batter_name in s:
-                    # "타자명 : 내용"에서 내용만 추출 (콜론 뒤 부분)
-                    match = re.search(rf"^{re.escape(actual_batter_name)}\s*:\s*(.+)$", s)
-                    if match:
-                        content = match.group(1).strip()
-                        # 교체 문구(대타 포함)는 main_result로 사용하지 않고 full_result에 유지
-                        if "대타" in content:
-                            remaining_parts.append(s)
+                    if actual_batter_name in s:
+                        # "타자명 : 내용"에서 내용만 추출 (콜론 뒤 부분)
+                        match = re.search(rf"^{re.escape(actual_batter_name)}\s*:\s*(.+)$", s)
+                        if match:
+                            content = match.group(1).strip()
+                            # 교체 문구(대타 포함)는 main_result로 사용하지 않고 full_result에 유지
+                            if "대타" in content:
+                                remaining_parts.append(s)
+                                continue
+                            # 실제 결과만 main_result로 반영하고 full_result에서는 제거
+                            main_play = content
                             continue
-                        # 실제 결과만 main_result로 반영하고 full_result에서는 제거
-                        main_play = content
+                        # 콜론 형태가 아니면 유지
+                        remaining_parts.append(s)
                         continue
-                    # 콜론 형태가 아니면 유지
+
                     remaining_parts.append(s)
-                    continue
 
-                remaining_parts.append(s)
+                idx = pitch_merge_tracker[pitch_merge_key]
+                if main_play is not None:
+                    at_bats[idx]["main_result"] = main_play
+                at_bats[idx]["full_result"] = "|".join(remaining_parts).strip() if remaining_parts else None
 
-            idx = pitch_merge_tracker[pitch_merge_key]
-            if main_play is not None:
-                at_bats[idx]["main_result"] = main_play
-            at_bats[idx]["full_result"] = "|".join(remaining_parts).strip() if remaining_parts else None
+            # 마지막 타석인지 판단하고 full_result 수정
+            for i, ab in enumerate(at_bats):
+                # full_result가 진행 중이고 event만 있을 경우
+                if ab["full_result"] == "(진행 중)" and ab["pitch_sequence"]:
+                    last_res = pitch_sequence[-1].get("pitch_result")
+                    if last_res and ":" in last_res:
+                        new_atbat["full_result"] = last_res
 
+                    only_event = all(p.get("pitch_result") is None and p.get("event") for p in ab["pitch_sequence"])
+                    
+                    if only_event:
+                        is_last = (i == len(at_bats) - 1)  # 마지막 타석인지 체크
 
-        # 마지막 타석인지 판단하고 full_result 수정
-        for i, ab in enumerate(at_bats):
-            # full_result가 진행 중이고 event만 있을 경우
-            if ab["full_result"] == "(진행 중)" and ab["pitch_sequence"]:
-                last_res = pitch_sequence[-1].get("pitch_result")
-                if last_res and ":" in last_res:
-                    new_atbat["full_result"] = last_res
+                        # 마지막 타석이면 유지
+                        if is_last:
+                            continue
 
-                only_event = all(p.get("pitch_result") is None and p.get("event") for p in ab["pitch_sequence"])
-                
-                if only_event:
-                    is_last = (i == len(at_bats) - 1)  # 마지막 타석인지 체크
-
-                    # 마지막 타석이면 유지
-                    if is_last:
-                        continue
-
-                    # 다음 타석이 존재하면, event 내용을 full_result에 반영
-                    event_texts = [p["event"] for p in ab["pitch_sequence"] if p["event"]]
-                    ab["full_result"] = "|".join(event_texts)
+                        # 다음 타석이 존재하면, event 내용을 full_result에 반영
+                        event_texts = []
+                        for p in ab["pitch_sequence"]:
+                            ev = p.get("event")
+                            if isinstance(ev, list):
+                                event_texts.extend([e for e in ev if isinstance(e, str)])
+                            elif isinstance(ev, str):
+                                event_texts.append(ev)
+                        ab["full_result"] = "|".join(event_texts) if event_texts else ab["full_result"]
+    except Exception as e:
+        print(e)
             
     # full_result 정리: main_result와 동일한 의미의 항목(타자명 접두 제거 후 동일)은 제외
     for ab in at_bats:
@@ -781,6 +791,8 @@ def get_game_datas(start_date, end_date):
     game_ids = models.Game.objects.filter(q).values_list('id', flat=True)
     print(game_ids)
 
+    # game_ids = ['20250323HHKT02025']
+
     for game in game_ids:
         date = game[:8]
         away_team = team_map(game[8:10])
@@ -804,7 +816,6 @@ def get_game_datas(start_date, end_date):
             for key in new_data.keys():
                 if key in ['game_over', 'home_lineup', 'away_lineup', 'game_id']: continue
                 else:
-                    # print([key])
                     save_at_bat_transactionally(new_data[key], game, merged_entries)
         else:
             print("- 새 데이터 없음")
@@ -870,13 +881,13 @@ def test():
 def main():
     # test()
     # realtime_test()
-    get_realtime_data()
+    # get_realtime_data()
 
     # get_all_game_datas(2025)
     # get_all_game_datas(2024)
     # get_all_game_datas(2023)
 
-    # get_game_datas(20250323, 20250323)
+    get_game_datas(20250323, 20250323)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
