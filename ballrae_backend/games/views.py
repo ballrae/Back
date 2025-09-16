@@ -213,12 +213,15 @@ class GameRelayView(APIView):
         if not inning_objs:
             return Response({'message': f'{inning}회 이닝 정보가 없습니다.'}, status=status.HTTP_404_NOT_FOUND)
 
+        print(len(inning_objs))
+        
         try:
             inning_data = {
                 'top': InningSerializer(inning_objs[0]).data,
                 'bot': InningSerializer(inning_objs[1]).data
             }
         except IndexError:
+            print("index error")
             return Response({
                 'status': 'OK_ARCHIVED',
                 'message': f'{inning}회 이닝 정보 (과거 경기)',
