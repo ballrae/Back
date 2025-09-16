@@ -883,11 +883,11 @@ def main():
     # realtime_test()
     # get_realtime_data()
 
-    # get_all_game_datas(2025)
-    # get_all_game_datas(2024)
-    # get_all_game_datas(2023)
+    get_all_game_datas(2025)
+    get_all_game_datas(2024)
+    get_all_game_datas(2023)
 
-    get_game_datas(20250827, 20250827)
+    # get_game_datas(20250827, 20250827)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
