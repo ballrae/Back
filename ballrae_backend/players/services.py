@@ -180,7 +180,7 @@ def update_players_war_and_stats(p):
 
     pcode = p.pcode
     position = p.position
-    player = Player.objects.get(pcode=pcode)
+    player = p
 
     url = f"https://m.sports.naver.com/ajax/player/record?category=kbo&playerId={pcode}"
     try:
