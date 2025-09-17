@@ -23,4 +23,4 @@ for player in players:
     else: print(player.player_name, "포지션 정보 없음")
 
     update_players_war_and_stats(player)
-    update_team_wins_loses_and_streak()
+update_team_wins_loses_and_streak()
