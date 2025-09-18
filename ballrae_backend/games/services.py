@@ -36,12 +36,15 @@ def get_stadium(team):
 # 타임아웃/병렬 관련 설정 — 운영환경에 맞게 조정 가능
 PARALLEL_WORKERS = 3        # 병렬 호출 수를 많이 낮춤 (원래 8 → 3 권장)
 PLI_API_SINGLE_URL = "http://pli-api:8002/calculate_pli_raw"
+PLI_API_JOB_URL = "http://pli-api:8002/job"
 PLI_CACHE_TTL = 60 * 60     # 정상 결과 TTL
 PLI_ERROR_TTL = 10          # 에러는 짧게 캐시
 REQUEST_TIMEOUT = 15        # individual request read timeout (초) — 6 → 15로 증가
 MAX_RETRIES = 2             # 네트워크/일시오류 시 재시도 횟수 (총 시도 = MAX_RETRIES + 1)
 BACKOFF_FACTOR = 0.5        # 지수 백오프 계수 (0.5, 1, 2 초 등)
 LOCK_TTL = 8                # singleflight 락 TTL (초)
+JOB_POLLING_TIMEOUT = 30  # job 결과 대기 시간
+JOB_POLLING_INTERVAL = 0.5  # polling 간격
 
 # ---------- 캐시 키 생성 유틸 ----------
 def _pli_cache_key(payload: dict, game_id: str) -> str:
@@ -96,7 +99,7 @@ def get_pli_from_api(atbat_data: dict, game_id: str, timeout: int = 5) -> Dict[s
         result = resp.json()
     except requests.exceptions.RequestException as e:
         print(f"Error calling PLI API (single): {e}")
-        result = {"error": "Failed to get PLI from API"}
+        result = {"error": "Failed to get PLI from API", "pli": None, "base_we": None, "total_weight": None}
 
     # 캐시에 저장 (성공이든 실패 표식이든 저장해서 반복 실패로 인한 무한 요청 방지 가능)
     try:
@@ -158,6 +161,7 @@ def _fetch_single_pli(payload: dict, game_id: str, timeout: int = REQUEST_TIMEOU
     cached = redis_client.get(cache_key)
     if cached:
         try:
+            print(json.loads(cached.decode() if isinstance(cached, bytes) else cached))
             return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
         except Exception:
             pass
@@ -169,6 +173,7 @@ def _fetch_single_pli(payload: dict, game_id: str, timeout: int = REQUEST_TIMEOU
         cached = redis_client.get(cache_key)
         if cached:
             try:
+                print(json.loads(cached.decode() if isinstance(cached, bytes) else cached))
                 return json.loads(cached.decode() if isinstance(cached, bytes) else cached)
             except Exception:
                 pass
@@ -272,7 +277,7 @@ def get_pli_batch_and_cache(atbats: List[dict], game_id: str, timeout_per_reques
                     res = fut.result()
                 except Exception as e:
                     print("Parallel fetch exception:", e)
-                    res = {"error": "pli_fetch_failed", "detail": str(e)}
+                    res = {"error": "Failed to get PLI from API", "pli": None, "base_we": None, "total_weight": None}
                 results[orig_idx] = res
 
     # 3) None 채우기 (단, pitch_sequence==None 은 그대로 둠)
@@ -492,3 +497,106 @@ def update_team_wins_loses_and_streak():
         team.save()
 
     print("팀별 승/패/연승연패(streak) 업데이트 완료")
+
+# services.py에 추가할 함수들
+
+def get_pli_from_api_with_job(atbat_data: dict, game_id: str, timeout: int = 30) -> Dict[str, Any]:
+    """
+    RQ job을 사용한 비동기 PLI 계산
+    - 즉시 job_id 반환
+    - 결과는 별도로 polling 필요
+    """
+    payload = dict(atbat_data)
+    
+    # team/stadium/streak 추가 (기존과 동일)
+    offe_inn = game_id[8:10]
+    if payload.get('half') == 'bot':
+        offe_inn = game_id[10:12]
+    
+    payload['team'] = offe_inn
+    payload['stadium'] = get_stadium(game_id[10:12])
+    try:
+        payload['streak'] = Team.objects.filter(id=offe_inn).values_list('consecutive_streak', flat=True).first()
+    except Exception:
+        payload['streak'] = None
+    
+    headers = {"Content-Type": "application/json"}
+    try:
+        # job 생성 요청
+        resp = requests.post(PLI_API_SINGLE_URL, headers=headers, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        job_data = resp.json()
+        return {"job_id": job_data["job_id"], "status": "queued"}
+    except requests.exceptions.RequestException as e:
+        print(f"Error creating PLI job: {e}")
+        return {"error": "Failed to create PLI job", "detail": str(e)}
+
+def get_pli_job_result(job_id: str, timeout: int = 5) -> Dict[str, Any]:
+    """
+    RQ job 결과 조회
+    """
+    try:
+        resp = requests.get(f"{PLI_API_JOB_URL}/{job_id}", timeout=timeout)
+        if resp.status_code == 404:
+            # 엔드포인트는 있으나 아직 해당 job이 레디스에 반영되지 않은 초기 상태일 수 있음
+            return {"status": "pending"}
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching job result: {e}")
+        return {"error": "Failed to fetch job result", "detail": str(e)}
+
+def get_pli_batch_with_jobs(atbats: List[dict], game_id: str) -> List[Dict[str, Any]]:
+    """
+    RQ job을 사용한 배치 PLI 계산
+    - 모든 atbat에 대해 job 생성
+    - 결과를 polling해서 수집
+    """
+    n = len(atbats)
+    results: List[Optional[Dict[str, Any]]] = [None] * n
+    job_ids: List[Optional[str]] = [None] * n
+    
+    # 1) 모든 atbat에 대해 job 생성
+    for idx, atbat in enumerate(atbats):
+        if atbat.get('strike_zone') is None:
+            results[idx] = {"pli": "unavailable"}
+            continue
+            
+        job_result = get_pli_from_api_with_job(atbat, game_id)
+        if "job_id" in job_result:
+            job_ids[idx] = job_result["job_id"]
+        else:
+            results[idx] = job_result
+    
+    # 2) job 결과 polling (최대 30초)
+    max_wait = 30
+    start_time = time.time()
+    
+    while time.time() - start_time < max_wait:
+        all_done = True
+        for idx, job_id in enumerate(job_ids):
+            if job_id is None or results[idx] is not None:
+                continue
+                
+            job_result = get_pli_job_result(job_id)
+            if job_result.get("status") == "finished":
+                results[idx] = job_result.get("result", {})
+            elif job_result.get("status") == "failed":
+                results[idx] = {"error": "Job failed", "detail": job_result.get("error")}
+            else:
+                all_done = False
+        
+        if all_done:
+            break
+        time.sleep(0.5)  # 500ms 대기
+    
+    # 3) 미완료 job 처리
+    for idx, job_id in enumerate(job_ids):
+        if job_id is not None and results[idx] is None:
+            results[idx] = {"error": "Job timeout"}
+    
+    # 4) atbat에 부착
+    for atbat, res in zip(atbats, results):
+        atbat['pli_data'] = res
+    
+    return results

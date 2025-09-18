@@ -5,3 +5,4 @@ requests
 django
 celery
 dotenv
+rq

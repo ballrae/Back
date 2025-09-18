@@ -12,7 +12,7 @@ import json
 from django.utils import timezone
 from ballrae_backend.games.models import Game
 import pytz
-from .services import get_pli_batch_and_cache
+from .services import get_pli_batch_with_jobs
 
 TEAM_CODE = {
     "HH": "한화",
@@ -159,7 +159,7 @@ class GameRelayView(APIView):
                 atbats_top = top_data.get('atbats', []) or []
 
                 try:
-                    pli_results_top = get_pli_batch_and_cache(atbats_top, game_id)
+                    pli_results_top = get_pli_batch_with_jobs(atbats_top, game_id)
                 except Exception as e:
                     # 배치 함수 자체에 문제가 생기면 안전하게 에러 마킹
                     print("get_pli_batch_and_cache error (top):", e)
@@ -177,7 +177,7 @@ class GameRelayView(APIView):
                 atbats_bot = bot_data.get('atbats', []) or []
 
                 try:
-                    pli_results_bot = get_pli_batch_and_cache(atbats_bot, game_id)
+                    pli_results_bot = get_pli_batch_with_jobs(atbats_bot, game_id)
                 except Exception as e:
                     print("get_pli_batch_and_cache error (bot):", e)
                     pli_results_bot = [{"error": "pli_fetch_failed"} for _ in atbats_bot]
