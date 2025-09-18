@@ -573,6 +573,8 @@ def get_realtime_pitcher(pcode):
                 
                 # ERA 계산 (타점이 없으므로 0으로 설정)
                 era = pitcher_obj.era or 0.0
+                w = pitcher_obj.w
+                l = pitcher_obj.l
                 
                 # K/9 계산
                 k9 = round(k * 9.0 / inn, 2) if inn else 0.0
@@ -591,6 +593,8 @@ def get_realtime_pitcher(pcode):
                     "hits": hits,
                     "era": era,
                     "k9": k9,
+                    "win": w,
+                    "lose": l,
                     "bb9": bb9,
                     "whip": whip
                 }
