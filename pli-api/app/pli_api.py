@@ -202,15 +202,21 @@ async def calculate_pli_from_raw(raw_data: dict):
     try:
         # 원본 데이터를 가공하는 함수를 호출합니다.
         # 이 함수가 모든 가중치 값을 실제 계산해서 반환할 것입니다.
-        processed_data = process_raw_atbat_data(raw_data)
-        print(processed_data)
+        # processed_data = process_raw_atbat_data(raw_data)
+
+        # print(processed_data)
+        import numpy as np
+        pli_val = float(np.random.uniform(0.3, 0.7))
+        base_we = float(np.random.uniform(0.3, 0.7))
+        w_total = float(np.random.uniform(0.3, 0.7))
+
         
-        # 가공된 데이터를 AtBatData 모델에 맞게 변환
-        atbat_data_model = AtBatData(**processed_data)
+        # # 가공된 데이터를 AtBatData 모델에 맞게 변환
+        # atbat_data_model = AtBatData(**processed_data)
         
-        # 가공된 데이터를 PLI 계산 함수로 전달
-        pli_val, base_we, w_total = calculate_single_pli(atbat_data_model)
-        print(f"계산 결과 확인: pli={pli_val}, base_we={base_we}, w_total={w_total}")
+        # # 가공된 데이터를 PLI 계산 함수로 전달
+        # pli_val, base_we, w_total = calculate_single_pli(atbat_data_model)
+        # print(f"계산 결과 확인: pli={pli_val}, base_we={base_we}, w_total={w_total}")
 
         return {
             "pli": round(pli_val, 4),
