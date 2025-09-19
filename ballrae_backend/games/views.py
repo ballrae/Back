@@ -65,7 +65,7 @@ def update_game_statuses():
     kst = timezone.now().astimezone(pytz.timezone('Asia/Seoul'))
     print(kst)
 
-    Game.objects.filter(status='scheduled', date__lte=kst).update(status='ing')
+    Game.objects.filter(status='scheduled', date__lte=kst).update(status='live')
 
 # Game 목록 조회
 class GameListView(APIView):
