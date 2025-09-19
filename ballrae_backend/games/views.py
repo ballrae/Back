@@ -76,17 +76,31 @@ class GameListView(APIView):
         try:
             games = Game.objects.filter(id__startswith=date)
             serializer = GameDateSerializer(games, many=True)
+            data = serializer.data
+            saved_score = ""
+
+            if date == today.strftime("%Y%m%d"):
+                enriched = []
+                for game in data:
+                    score = get_score_from_atbats(game["id"]) if game["id"][:8] == today.strftime("%Y%m%d") else game.get("score")
+                    saved_score = score
+                    if score != "loding...":
+                        game["score"] = score
+                        # print("not loading")
+                    elif score == "loading...":
+                        print("loading")
+                        if saved_score:
+                            score = saved_score
+                        else:
+                            game["score"] = None
+                    enriched.append(game)
+                    
+                data = enriched
+
             return Response({
-                'status': 'OK',
-                'message': '게임 목록 조회 성공',
-                'data': [
-                    {
-                        **game,
-                        "score": get_score_from_atbats(game["id"]) if date == today.strftime("%Y%m%d") and game["id"][:8] == today.strftime("%Y%m%d") else game.get("score")
-                    }
-                    for game in serializer.data
-                ] if date == today.strftime("%Y%m%d") else serializer.data
-                
+                "status": "OK",
+                "message": "게임 목록 조회 성공",
+                "data": data
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
