@@ -224,67 +224,78 @@ def _fetch_single_pli(payload: dict, game_id: str, timeout: int = REQUEST_TIMEOU
 def get_pli_batch_and_cache(atbats: List[dict], game_id: str, timeout_per_request: int = REQUEST_TIMEOUT) -> List[Dict[str, Any]]:
     n = len(atbats)
     results: List[Optional[Dict[str, Any]]] = [None] * n
-    to_request_payloads: List[dict] = []
-    to_request_indices: List[int] = []
+    # to_request_payloads: List[dict] = []
+    # to_request_indices: List[int] = []
 
     # 1) payload 준비 및 캐시 검사
     for idx, atbat in enumerate(atbats):
         payload = dict(atbat)
-        offe_inn = game_id[8:10]
-        if payload.get('half') == 'bot':
-            offe_inn = game_id[10:12]
+        # offe_inn = game_id[8:10]
+        # if payload.get('half') == 'bot':
+        #     offe_inn = game_id[10:12]
 
         # pitch_sequence == None → 대타 상황 → PLI 계산 생략
         if payload.get('strike_zone') is None:
             results[idx] = None  # 명시적으로 None 저장
             continue
+            
+        else:
+            import numpy as np
+            pli_val = float(np.random.uniform(0.3, 0.7))
+            base_we = float(np.random.uniform(0.3, 0.7))
+            w_total = float(np.random.uniform(0.3, 0.7))
+            results[idx] = {
+                "pli": round(pli_val, 4),
+                "base_we": round(base_we, 4),
+                "total_weight": round(w_total, 4)                
+            }
 
-        payload['team'] = offe_inn
-        payload['stadium'] = get_stadium(game_id[10:12])
-        try:
-            payload['streak'] = Team.objects.filter(id=payload['team']).values_list('consecutive_streak', flat=True).first()
-        except Exception:
-            payload['streak'] = None
+    #     payload['team'] = offe_inn
+    #     payload['stadium'] = get_stadium(game_id[10:12])
+    #     try:
+    #         payload['streak'] = Team.objects.filter(id=payload['team']).values_list('consecutive_streak', flat=True).first()
+    #     except Exception:
+    #         payload['streak'] = None
 
-        cache_key = _pli_cache_key(payload, game_id)
-        cached = redis_client.get(cache_key)
-        if cached:
-            try:
-                results[idx] = json.loads(cached.decode() if isinstance(cached, bytes) else cached)
-                continue
-            except Exception:
-                pass
-        to_request_payloads.append(payload)
-        to_request_indices.append(idx)
+    #     cache_key = _pli_cache_key(payload, game_id)
+    #     cached = redis_client.get(cache_key)
+    #     if cached:
+    #         try:
+    #             results[idx] = json.loads(cached.decode() if isinstance(cached, bytes) else cached)
+    #             continue
+    #         except Exception:
+    #             pass
+    #     to_request_payloads.append(payload)
+    #     to_request_indices.append(idx)
 
-    # 2) 캐시 미스만 병렬 호출 (스레드풀)
-    if to_request_payloads:
-        max_workers = min(PARALLEL_WORKERS, max(1, len(to_request_payloads)))
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            future_to_local_idx = {}
-            for local_idx, payload in enumerate(to_request_payloads):
-                future = ex.submit(_fetch_single_pli, payload, game_id, timeout_per_request)
-                future_to_local_idx[future] = local_idx
-            for fut in as_completed(future_to_local_idx):
-                local_idx = future_to_local_idx[fut]
-                orig_idx = to_request_indices[local_idx]
-                try:
-                    res = fut.result()
-                except Exception as e:
-                    print("Parallel fetch exception:", e)
-                    res = {"error": "pli_fetch_failed", "detail": str(e)}
-                results[orig_idx] = res
+    # # 2) 캐시 미스만 병렬 호출 (스레드풀)
+    # if to_request_payloads:
+    #     max_workers = min(PARALLEL_WORKERS, max(1, len(to_request_payloads)))
+    #     with ThreadPoolExecutor(max_workers=max_workers) as ex:
+    #         future_to_local_idx = {}
+    #         for local_idx, payload in enumerate(to_request_payloads):
+    #             future = ex.submit(_fetch_single_pli, payload, game_id, timeout_per_request)
+    #             future_to_local_idx[future] = local_idx
+    #         for fut in as_completed(future_to_local_idx):
+    #             local_idx = future_to_local_idx[fut]
+    #             orig_idx = to_request_indices[local_idx]
+    #             try:
+    #                 res = fut.result()
+    #             except Exception as e:
+    #                 print("Parallel fetch exception:", e)
+    #                 res = {"error": "pli_fetch_failed", "detail": str(e)}
+    #             results[orig_idx] = res
 
-    # 3) None 채우기 (단, pitch_sequence==None 은 그대로 둠)
-    for i, r in enumerate(results):
-        if atbats[i].get('strike_zone') is None:
-            results[i] = {"pli": "unavailable"}
-        elif r is None and atbats[i].get('pitch_sequence') is not None:
-            results[i] = {"error": "pli_unavailable"}
+    # # 3) None 채우기 (단, pitch_sequence==None 은 그대로 둠)
+    # for i, r in enumerate(results):
+    #     if atbats[i].get('strike_zone') is None:
+    #         results[i] = {"pli": "unavailable"}
+    #     elif r is None and atbats[i].get('pitch_sequence') is not None:
+    #         results[i] = {"error": "pli_unavailable"}
 
-    # 4) atbat에 부착
-    for atbat, res in zip(atbats, results):
-        atbat['pli_data'] = res
+    # # 4) atbat에 부착
+    # for atbat, res in zip(atbats, results):
+    #     atbat['pli_data'] = res
 
     return results
 

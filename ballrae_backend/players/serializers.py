@@ -51,6 +51,7 @@ class PitcherSerializer(serializers.ModelSerializer):
 class BatterSerializer(serializers.ModelSerializer):
     player = PlayerSerializer(read_only=True)
     stats = serializers.SerializerMethodField()
+    raa_data = serializers.SerializerMethodField()
 
     def get_stats(self, obj):
         ab = obj.ab or 0
@@ -74,15 +75,43 @@ class BatterSerializer(serializers.ModelSerializer):
 
             bbk = round(obj.walks/obj.strikeouts, 3)
 
-            return {
+            result = {
                 "avg": avg,
                 "slg": slg,
                 "obp": obp,
                 "ops": ops,
                 "bb/k": bbk,
                 "isop": isop,
+                "total_raa": obj.total_raa,  # RAA 데이터 추가
             }
+
+            return result
         else: return {}
+
+    def get_raa_data(self, obj):
+        """RAA (Runs Above Average) 데이터 반환"""
+        try:
+            return {
+                "total_raa": obj.total_raa,
+                "offensive_raa": obj.offensive_raa,
+                "defensive_raa": obj.defensive_raa,
+                "batting_raa": obj.batting_raa,
+                "baserunning_raa": obj.baserunning_raa,
+                "fielding_raa": obj.fielding_raa,
+                "total_raa_rank": obj.total_raa_rank,
+                "total_raa_percentile": obj.total_raa_percentile,
+            }
+        except:
+            return {
+                "total_raa": None,
+                "offensive_raa": None,
+                "defensive_raa": None,
+                "batting_raa": None,
+                "baserunning_raa": None,
+                "fielding_raa": None,
+                "total_raa_rank": None,
+                "total_raa_percentile": None,
+            }
 
     class Meta:
         model = Batter

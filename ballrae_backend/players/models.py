@@ -19,6 +19,18 @@ class Batter(models.Model):
     war = models.FloatField(default=0.0, null=True)
     wrc = models.FloatField(default=0.0, null=True)
     babip = models.FloatField(default=0.0, null=True)
+    
+    # RAA (Runs Above Average) 필드들
+    total_raa = models.FloatField(default=0.0, null=True)  # 종합RAA
+    offensive_raa = models.FloatField(default=0.0, null=True)  # 공격RAA
+    defensive_raa = models.FloatField(default=0.0, null=True)  # 수비RAA
+    batting_raa = models.FloatField(default=0.0, null=True)  # 타격RAA
+    baserunning_raa = models.FloatField(default=0.0, null=True)  # 주루RAA
+    fielding_raa = models.FloatField(default=0.0, null=True)  # 필딩RAA
+    
+    # RAA 순위 정보
+    total_raa_rank = models.IntegerField(null=True, blank=True)
+    total_raa_percentile = models.IntegerField(null=True, blank=True)
 
     @property
     def name(self):
