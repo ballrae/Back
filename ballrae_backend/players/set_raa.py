@@ -37,18 +37,22 @@ def load_raa_data():
         # 스탯 종류에 따라 적절한 필드에 매핑
         if stat_type == '종합RAA':
             player_raa_data[player_name]['total_raa'] = raa_value
-            player_raa_data[player_name]['total_raa_rank'] = int(rank)
             player_raa_data[player_name]['total_raa_percentile'] = int(percentile)
         elif stat_type == '공격RAA':
             player_raa_data[player_name]['offensive_raa'] = raa_value
+            player_raa_data[player_name]['offensive_raa_percentile'] = int(percentile)
         elif stat_type == '수비RAA':
             player_raa_data[player_name]['defensive_raa'] = raa_value
+            player_raa_data[player_name]['defensive_raa_percentile'] = int(percentile)
         elif stat_type == '타격RAA':
             player_raa_data[player_name]['batting_raa'] = raa_value
+            player_raa_data[player_name]['batting_raa_percentile'] = int(percentile)
         elif stat_type == '주루RAA':
             player_raa_data[player_name]['baserunning_raa'] = raa_value
+            player_raa_data[player_name]['baserunning_raa_percentile'] = int(percentile)
         elif stat_type == '필딩RAA':
             player_raa_data[player_name]['fielding_raa'] = raa_value
+            player_raa_data[player_name]['fielding_raa_percentile'] = int(percentile)
     
     # 데이터베이스 업데이트
     updated_count = 0

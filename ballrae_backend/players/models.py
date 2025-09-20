@@ -29,8 +29,12 @@ class Batter(models.Model):
     fielding_raa = models.FloatField(default=0.0, null=True)  # 필딩RAA
     
     # RAA 순위 정보
-    total_raa_rank = models.IntegerField(null=True, blank=True)
     total_raa_percentile = models.IntegerField(null=True, blank=True)
+    offensive_raa_percentile = models.IntegerField(null=True, blank=True)
+    defensive_raa_percentile = models.IntegerField(null=True, blank=True)
+    batting_raa_percentile = models.IntegerField(null=True, blank=True)
+    baserunning_raa_percentile = models.IntegerField(null=True, blank=True)
+    fielding_raa_percentile = models.IntegerField(null=True, blank=True)
 
     @property
     def name(self):
