@@ -392,32 +392,36 @@ def get_score_from_atbats(game_id):
         except Exception:
             return -1, ""
 
-    inning_half_list = []
-    for key in keys:
-        k = key.decode() if isinstance(key, bytes) else key
-        inning, half = extract_inning_and_half(k)
-        if inning != -1:
-            inning_half_list.append((inning, half, k))
+    try:
+        inning_half_list = []
+        for key in keys:
+            k = key.decode() if isinstance(key, bytes) else key
+            inning, half = extract_inning_and_half(k)
+            if inning != -1:
+                inning_half_list.append((inning, half, k))
 
-    if not inning_half_list:
-        return None
+        if not inning_half_list:
+            return None
 
-    max_inning = max(inning_half_list, key=lambda x: x[0])[0]
-    max_inning_keys = [(half, k) for inning, half, k in inning_half_list if inning == max_inning]
+        max_inning = max(inning_half_list, key=lambda x: x[0])[0]
+        max_inning_keys = [(half, k) for inning, half, k in inning_half_list if inning == max_inning]
 
-    valid_key = None
-    for half, k in max_inning_keys:
-        if half == "bot":
-            valid_key = k
-            break
-    if not valid_key:
+        valid_key = None
         for half, k in max_inning_keys:
-            if half == "top":
+            if half == "bot":
                 valid_key = k
                 break
-
-    recent = json.loads(redis_client.get(valid_key))['atbats'][-1]['score']
-    return recent
+        if not valid_key:
+            for half, k in max_inning_keys:
+                if half == "top":
+                    valid_key = k
+                    break
+        
+        recent = json.loads(redis_client.get(valid_key))['atbats'][-1]['score']
+        return recent
+    except Exception as e:
+        print(e)
+        return "loding..."
 
 # =========================
 # 팀별 승/패/연승연패 계산 함수
