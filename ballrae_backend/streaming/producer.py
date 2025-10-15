@@ -710,6 +710,14 @@ def crawl_game_loop(game_id, topic, producer):
 
 def get_realtime_data():
     today = datetime.datetime.today().strftime('%Y%m%d')
+
+    # 가을야구 기간은 id 다름 (20251006부터)
+    today_int = int(today)
+    if today_int >= 20251006:
+        today = '5555' + str(today_int)[4:]
+    else:
+        today = str(today_int)
+
     game_ids = models.Game.objects.filter(id__startswith=today).values_list('id', flat=True)    
     new_game_id = []
 
