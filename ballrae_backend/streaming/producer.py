@@ -803,7 +803,16 @@ def get_game_datas(start_date, end_date):
 
     for game in game_ids:
         date = game[:8]
-        date = '5555' + date[4:]
+        date_int = int(date)
+        if date_int >= 20251006 and date_int < 20251008:
+            date = '4444' + str(date_int)[4:]
+        elif date_int >= 20251008 and date_int < 20251016:
+            date = '3333' + str(date_int)[4:]
+        elif date_int >= 20251016:
+            date = '5555' + str(date_int)[4:]
+        else:
+            date = str(date_int)
+
         away_team = team_map(game[8:10])
         home_team = team_map(game[10:12])
 
