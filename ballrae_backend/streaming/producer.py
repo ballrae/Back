@@ -795,7 +795,7 @@ def get_game_datas(start_date, end_date):
 
     for game in game_ids:
         date = game[:8]
-        data[:4] = '5555'
+        date[:4] = '5555'
         away_team = team_map(game[8:10])
         home_team = team_map(game[10:12])
 
