@@ -795,6 +795,7 @@ def get_game_datas(start_date, end_date):
 
     for game in game_ids:
         date = game[:8]
+        data[:4] = '5555'
         away_team = team_map(game[8:10])
         home_team = team_map(game[10:12])
 
@@ -881,13 +882,13 @@ def test():
 def main():
     # test()
     # realtime_test()
-    get_realtime_data()
+    # get_realtime_data()
 
     # get_all_game_datas(2025)
     # get_all_game_datas(2024)
     # get_all_game_datas(2023)
 
-    # get_game_datas(20250827, 20250827)
+    get_game_datas(20251006, 20251015)
     # get_game_datas(20240425, 20241130)
 
 if __name__ == "__main__":
