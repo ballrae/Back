@@ -51,6 +51,7 @@ class PitcherSerializer(serializers.ModelSerializer):
 class BatterSerializer(serializers.ModelSerializer):
     player = PlayerSerializer(read_only=True)
     stats = serializers.SerializerMethodField()
+    raa_data = serializers.SerializerMethodField()
 
     def get_stats(self, obj):
         ab = obj.ab or 0
@@ -74,15 +75,51 @@ class BatterSerializer(serializers.ModelSerializer):
 
             bbk = round(obj.walks/obj.strikeouts, 3)
 
-            return {
+            result = {
                 "avg": avg,
                 "slg": slg,
                 "obp": obp,
                 "ops": ops,
                 "bb/k": bbk,
                 "isop": isop,
+                "total_raa": obj.total_raa,  # RAA 데이터 추가
             }
+
+            return result
         else: return {}
+
+    def get_raa_data(self, obj):
+        """RAA (Runs Above Average) 데이터 반환"""
+        try:
+            return {
+                "total_raa": obj.total_raa,
+                "total_raa_percentile": obj.total_raa_percentile,                
+                "offensive_raa": obj.offensive_raa,
+                "offensive_raa_percentile": obj.offensive_raa_percentile,                
+                "defensive_raa": obj.defensive_raa,
+                "defensive_raa_percentile": obj.defensive_raa_percentile,                
+                "batting_raa": obj.batting_raa,
+                "batting_raa_percentile": obj.batting_raa_percentile,                
+                "baserunning_raa": obj.baserunning_raa,
+                "baserunning_raa_percentile": obj.baserunning_raa_percentile,                
+                "fielding_raa": obj.fielding_raa,
+                "fielding_raa_percentile": obj.fielding_raa_percentile,                
+            }
+        except:
+            return {
+                "total_raa": None,
+                "total_raa_percentile": None,                
+                "offensive_raa": None,
+                "offensive_raa_percentile": None,                
+                "defensive_raa": None,
+                "defensive_raa_percentile": None,                
+                "batting_raa": None,
+                "batting_raa_percentile": None,                
+                "baserunning_raa": None,
+                "baserunning_raa_percentile": None,                
+                "fielding_raa": None,
+                "fielding_raa_percentile": None, 
+            }
 
     class Meta:
         model = Batter

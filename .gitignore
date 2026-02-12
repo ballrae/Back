@@ -15,7 +15,9 @@ db.sqlite3
 # 크롤링 테스트
 test.ipynb
 
-ballrae_test.sql
-ballrae_test_2.sql
-ballrae_test_3.sql
-ballrae_test_4.sql
+*.sql
+
+.vscode/
+
+# 테스트 파일
+relay.json

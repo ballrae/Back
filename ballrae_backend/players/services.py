@@ -457,7 +457,7 @@ def get_realtime_batter(pcode):
             season_2025 = None
             try:
                 season_2025 = Batter.objects.get(player=player, season=2025)
-                
+
                 # 최근 5경기 기록
                 recent = None
                 try:
@@ -474,7 +474,7 @@ def get_realtime_batter(pcode):
                 career = Batter.objects.get(player=player, season=None)
             except Batter.DoesNotExist:
                 pass
-            
+                            
             # 기록 데이터 계산
             def calculate_stats(batter_obj):
                 if not batter_obj:
@@ -494,23 +494,20 @@ def get_realtime_batter(pcode):
                     "ab": ab,
                     "hits": hits,
                     "homeruns": batter_obj.homeruns or 0,
-                    "rbi": 0,  # 타점 필드가 없으므로 0으로 설정
                     "obp": obp,
                     "avg": avg
                 }
             
             season_stats = calculate_stats(season_2025)
             career_stats = calculate_stats(career)
-            recent_stats = 0
-            if recent:
+            recent_stats = 0.0
+            if recent.ab != 0:
                 recent_stats = round((recent.hits / recent.ab, 3)) 
         
     except Exception as e:
-        season_stats = None
-        career_stats = None
+        print(e)
     
     today_stats = get_today_stat_from_redis(player) if player else None
-
     result = {
         "batter": direction,
         "season_2025": season_stats,
@@ -573,6 +570,8 @@ def get_realtime_pitcher(pcode):
                 
                 # ERA 계산 (타점이 없으므로 0으로 설정)
                 era = pitcher_obj.era or 0.0
+                w = pitcher_obj.w
+                l = pitcher_obj.l
                 
                 # K/9 계산
                 k9 = round(k * 9.0 / inn, 2) if inn else 0.0
@@ -591,6 +590,8 @@ def get_realtime_pitcher(pcode):
                     "hits": hits,
                     "era": era,
                     "k9": k9,
+                    "win": w,
+                    "lose": l,
                     "bb9": bb9,
                     "whip": whip
                 }

@@ -71,30 +71,34 @@ services:
       - ./pli-api/app:/app
     
   zookeeper:
-    image: bitnami/zookeeper:latest
+    image: confluentinc/cp-zookeeper:7.4.0
     container_name: ballrae-zookeeper
     ports:
       - "2181:2181"
     restart: no
     environment:
-      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: bitnami/kafka:3.7.0
+    image: confluentinc/cp-kafka:7.4.0
     container_name: ballrae-kafka
+    user: "root"
     ports:
       - "9092:9092"
     environment:
-      KAFKA_CFG_ZOOKEEPER_CONNECT: ballrae-zookeeper:2181
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-      KAFKA_LOG4J_LOGLEVEL: INFO
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: ballrae-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIR: /var/lib/kafka/data
     restart: no
     depends_on:
       - zookeeper
     volumes:
-      - kafka_data:/bitnami/kafka
+      - kafka_data:/var/lib/kafka/data
 
   kafka-consumer:
     container_name: ballrae-kafka-consumer
@@ -125,45 +129,45 @@ services:
     restart: no
     working_dir: /app
   
-  airflow-webserver:
-    container_name: ballrae-airflow-webserver
-    image: apache/airflow:2.9.1
-    restart: no
-    depends_on:
-      - airflow-scheduler
-      - airflow-postgres
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./dags:/opt/airflow/dags
-    command: webserver
+  # airflow-webserver:
+  #   container_name: ballrae-airflow-webserver
+  #   image: apache/airflow:2.9.1
+  #   restart: no
+  #   depends_on:
+  #     - airflow-scheduler
+  #     - airflow-postgres
+  #   environment:
+  #     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  #     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   command: webserver
 
-  airflow-scheduler:
-    container_name: ballrae-airflow-scheduler
-    image: apache/airflow:2.9.1
-    restart: no
-    depends_on:
-      - airflow-postgres
-    environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
-    volumes:
-      - ./dags:/opt/airflow/dags
-    command: scheduler
+  # airflow-scheduler:
+  #   container_name: ballrae-airflow-scheduler
+  #   image: apache/airflow:2.9.1
+  #   restart: no
+  #   depends_on:
+  #     - airflow-postgres
+  #   environment:
+  #     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  #     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #   command: scheduler
 
-  airflow-postgres:
-    container_name: ballrae-airflow-postgres
-    image: postgres:13
-    environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-    restart: no
-    volumes:
-      - airflow_db:/var/lib/postgresql/data
+  # airflow-postgres:
+  #   container_name: ballrae-airflow-postgres
+  #   image: postgres:13
+  #   environment:
+  #     POSTGRES_USER: airflow
+  #     POSTGRES_PASSWORD: airflow
+  #     POSTGRES_DB: airflow
+  #   restart: no
+  #   volumes:
+  #     - airflow_db:/var/lib/postgresql/data
 
 volumes:
   postgres_data:

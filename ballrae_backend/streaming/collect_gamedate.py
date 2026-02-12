@@ -7,6 +7,7 @@ from collections import defaultdict
 from psycopg2.errors import UniqueViolation
 import datetime
 from datetime import datetime
+import pytz
 from holidayskr import is_holiday
 
 def set_game_time(date):
@@ -41,6 +42,10 @@ def set_game_time(date):
 
     else:
         time = time.replace(hour=18, minute=30)  # 기본 18:30
+    
+    # 한국 시간대 설정
+    kst = pytz.timezone('Asia/Seoul')
+    time = kst.localize(time)
     
     return time
 
