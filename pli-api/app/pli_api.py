@@ -11,7 +11,7 @@ from rq.job import Job
 from rq import Queue
 from rq_queue import redis_client
 from tasks import calculate_pli_job
-from helpers import AtBatData, calculate_single_pli
+from helpers import AtBatData, calculate_single_pli, process_raw_atbat_data
 
 q = Queue(connection=redis_client)
 
@@ -30,6 +30,20 @@ async def calculate_pli_raw(raw_data: dict):
     job = q.enqueue(calculate_pli_job, raw_data)
     return {"job_id": job.get_id()}
 
+# --- 7-1. 원본 데이터를 동기적으로 즉시 계산하는 엔드포인트 ---
+# /calculate_pli_raw 는 job_id 만 반환(비동기)하므로, 캐시/배치 경로처럼
+# 결과를 바로 받아야 하는 호출자를 위한 동기 버전.
+@app.post("/calculate_pli_raw_sync")
+async def calculate_pli_raw_sync(raw_data: dict):
+    processed = process_raw_atbat_data(raw_data)
+    model = AtBatData(**processed)
+    pli_val, base_we, w_total = calculate_single_pli(model)
+    return {
+        "pli": round(pli_val, 4),
+        "base_we": round(base_we, 4),
+        "total_weight": round(w_total, 4),
+    }
+
 @app.get("/test")
 async def test_endpoint():
     return {"message": "test endpoint works"}
@@ -37,34 +51,7 @@ async def test_endpoint():
 @app.get("/job/{job_id}")
 async def get_job_result(job_id: str):
     try:
-<<<<<<< HEAD
         job = Job.fetch(job_id, connection=redis_client)
-=======
-        # 원본 데이터를 가공하는 함수를 호출합니다.
-        # 이 함수가 모든 가중치 값을 실제 계산해서 반환할 것입니다.
-        # processed_data = process_raw_atbat_data(raw_data)
-
-        # print(processed_data)
-        import numpy as np
-        pli_val = float(np.random.uniform(0.3, 0.7))
-        base_we = float(np.random.uniform(0.3, 0.7))
-        w_total = float(np.random.uniform(0.3, 0.7))
-
-        
-        # # 가공된 데이터를 AtBatData 모델에 맞게 변환
-        # atbat_data_model = AtBatData(**processed_data)
-        
-        # # 가공된 데이터를 PLI 계산 함수로 전달
-        # pli_val, base_we, w_total = calculate_single_pli(atbat_data_model)
-        # print(f"계산 결과 확인: pli={pli_val}, base_we={base_we}, w_total={w_total}")
-
-        return {
-            "pli": round(pli_val, 4),
-            "base_we": round(base_we, 4),
-            "total_weight": round(w_total, 4),
-        }
-
->>>>>>> 4f20545e24c6bc28ff32270b1e10f4c0fc2e8ed5
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Job fetch error: {e}")
     

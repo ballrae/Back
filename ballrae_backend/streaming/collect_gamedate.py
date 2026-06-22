@@ -75,7 +75,7 @@ field_map = {
     }
 
 # for year in [2023, 2024, 2025]:
-for year in [2025]:
+for year in [2026]:
     # 월 단위 크롤링
     for i in range(3, 11):
         print(i, "월")
@@ -146,7 +146,7 @@ for year in [2025]:
                     for (home, away), entries in game_entries.items():
                         for idx, entry in enumerate(entries):
                             dh = idx + 1 if len(entries) > 1 else 0
-                            game_id = f"{date}{away}{home}{dh}2025"
+                            game_id = f"{date}{away}{home}{dh}2026"
 
                             try:
                                 cur.execute("SELECT status FROM games_game WHERE id = %s", (game_id,))

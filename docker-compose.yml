@@ -66,10 +66,37 @@ services:
     ports:
       - "8002:8002"
     restart: no
+    environment:
+      - REDIS_HOST=ballrae-redis
+      - REDIS_PORT=6379
     volumes:
       - ./data:/app/data
       - ./pli-api/app:/app
-    
+    depends_on:
+      - redis
+
+  # PLI 비동기 작업(RQ job) 처리 워커.
+  # /calculate_pli_raw 로 enqueue 된 job 을 실제로 실행한다.
+  # 이 워커가 없으면 job 이 큐에 쌓이기만 하고 처리되지 않아 PLI 가 영원히 반환되지 않음.
+  pli-worker:
+    build:
+      context: ./pli-api
+      dockerfile: Dockerfile
+    container_name: pli-worker
+    working_dir: /app
+    command: rq worker --url redis://ballrae-redis:6379/0
+    environment:
+      - REDIS_HOST=ballrae-redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app
+    restart: no
+    volumes:
+      - ./data:/app/data
+      - ./pli-api/app:/app
+    depends_on:
+      - redis
+      - pli-api
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: ballrae-zookeeper
