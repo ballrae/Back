@@ -314,20 +314,28 @@ def save_at_bat_transactionally(data: dict, game_id, merged_dict):
 
             if pitcher:
                 actual_batter = atbat.get('actual_batter')
-                batter, _ = Player.objects.get_or_create(
-                    pcode=actual_batter,
-                    position='B',
-                    team_id=b_id,
-                    player_name = merged_dict.get(actual_batter)
-                )
+                # pcode 가 유니크가 아님(덤프에 트레이드 등으로 같은 pcode 여러 row).
+                # 따라서 get_or_create(pcode=...) 는 MultipleObjectsReturned 위험 →
+                # 존재하면 첫 row 사용, 없을 때만 생성. 이름 없으면 pcode 로 폴백(null 방지).
+                batter = Player.objects.filter(pcode=actual_batter).first()
+                if batter is None:
+                    batter = Player.objects.create(
+                        pcode=actual_batter,
+                        position='B',
+                        team_id=b_id,
+                        player_name=merged_dict.get(actual_batter) or actual_batter,
+                    )
 
                 # 투수 이름 가져오기
-                pitcher, _ = Player.objects.get_or_create(
-                    pcode=atbat.get('pitcher'),
-                    position='P',
-                    team_id=p_id,
-                    player_name = merged_dict.get(atbat.get('pitcher'))
-                )
+                pitcher_pcode = atbat.get('pitcher')
+                pitcher = Player.objects.filter(pcode=pitcher_pcode).first()
+                if pitcher is None:
+                    pitcher = Player.objects.create(
+                        pcode=pitcher_pcode,
+                        position='P',
+                        team_id=p_id,
+                        player_name=merged_dict.get(pitcher_pcode) or pitcher_pcode,
+                    )
         
             exists = AtBat.objects.filter(
                 inning=inning,
@@ -370,8 +378,9 @@ def save_at_bat_transactionally(data: dict, game_id, merged_dict):
                         event=pitch.get('event'),
                         pitch_result=pitch.get('pitch_result')
                     )
-        except:
-            print(game, inning, batter.player_name, "error")
+        except Exception as e:
+            # 한 타석 저장이 실패해도 나머지는 계속 진행 (전체 크롤 중단 방지)
+            print(f"[save_at_bat] {game_id} {data.get('inning')}회 atbat 저장 오류: {type(e).__name__}: {e}")
             continue
 
 def get_score_from_atbats(game_id):
