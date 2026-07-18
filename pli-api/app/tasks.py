@@ -2,9 +2,9 @@
 from rq import Queue
 from redis import Redis
 from helpers import process_raw_atbat_data, calculate_single_pli, AtBatData
-from rq_queue import redis_client
+from rq_queue import rq_redis
 
-q = Queue(connection=redis_client)
+q = Queue(connection=rq_redis)
 
 def calculate_pli_job(raw_data):
     processed = process_raw_atbat_data(raw_data)

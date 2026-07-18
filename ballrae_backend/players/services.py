@@ -439,15 +439,16 @@ def get_realtime_batter(pcode):
         # "Referer": "https://m.sports.naver.com/game/20250503OBSS02025/relay"
     }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
-
-    direction = json.loads(data['playerEndRecord']['chart'])['direction'] 
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        direction = json.loads(response.json()['playerEndRecord']['chart'])['direction']
+    except Exception:
+        direction = None
 
     # DB에서 타자 기록 데이터 가져오기
     try:
         player = Player.objects.filter(pcode=pcode).first()
-        
+
         if not player:
             season_stats = None
             career_stats = None
@@ -455,11 +456,11 @@ def get_realtime_batter(pcode):
         else:
             # 2025 시즌 기록
             season_2025 = None
+            recent = None
             try:
                 season_2025 = Batter.objects.get(player=player, season=2025)
 
                 # 최근 5경기 기록
-                recent = None
                 try:
                     recent = BatterRecent.objects.get(batter_id=season_2025)
                 except BatterRecent.DoesNotExist:
@@ -501,8 +502,8 @@ def get_realtime_batter(pcode):
             season_stats = calculate_stats(season_2025)
             career_stats = calculate_stats(career)
             recent_stats = 0.0
-            if recent.ab != 0:
-                recent_stats = round((recent.hits / recent.ab, 3)) 
+            if recent is not None and recent.ab:
+                recent_stats = round(recent.hits / recent.ab, 3)
         
     except Exception as e:
         print(e)
@@ -525,14 +526,14 @@ def get_realtime_pitcher(pcode):
         # "Referer": "https://m.sports.naver.com/game/20250503OBSS02025/relay"
     }
 
-    response = requests.get(url, headers=headers)
-    data = response.json()
-
-    data = json.loads(data['playerEndRecord']['chart'])['pit_kind']['player']
-
-    valid_pitches = [v for v in data.values() if v['pit_rt'] is not None]
-    sorted_pitches = sorted(valid_pitches, key=lambda x: x['pit_rt'], reverse=True)
-    top_3 = sorted_pitches[:3]
+    try:
+        response = requests.get(url, headers=headers, timeout=5)
+        data = json.loads(response.json()['playerEndRecord']['chart'])['pit_kind']['player']
+        valid_pitches = [v for v in data.values() if v['pit_rt'] is not None]
+        sorted_pitches = sorted(valid_pitches, key=lambda x: x['pit_rt'], reverse=True)
+        top_3 = sorted_pitches[:3]
+    except Exception:
+        top_3 = []
 
     # DB에서 투수 기록 데이터 가져오기
     try:

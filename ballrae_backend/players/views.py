@@ -366,8 +366,8 @@ class RealTimePlayersView(APIView):
         p = Player.objects.filter(pcode=pitcher).first()
         b = Player.objects.filter(pcode=batter).first()
 
-        bat = get_realtime_batter(b.pcode)
-        pit = get_realtime_pitcher(p.pcode)
+        bat = get_realtime_batter(b.pcode) if b else None
+        pit = get_realtime_pitcher(p.pcode) if p else None
 
         return Response({
             "status": "OK",

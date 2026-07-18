@@ -81,11 +81,31 @@ def _kma_base_datetime_now_kst():
     base_date = now.strftime('%Y%m%d')
     return base_date, base_time
 
+# 기상청 예보는 시간당 1회만 실제 호출하고 Redis에 캐싱해서 재사용 (설계 의도).
+# 매 타석마다 기상청을 때리지 않도록 (구장·예보시각·발표시각) 단위로 캐시.
+try:
+    from rq_queue import redis_client as _weather_redis
+except Exception:
+    _weather_redis = None
+
+WEATHER_TTL = 3600  # 1시간
+
+
 def get_stadium_temperature(scode: str, target_hour: int, *, auth_key: str, timeout: int = 10) -> float | None:
     info = STADIUM_MAP.get(scode.upper())
     if not info or not info["grid"]: return None
     base_date, base_time = _kma_base_datetime_now_kst()
     target_time_str = f"{target_hour:02d}00"
+
+    cache_key = f"weather:{scode.upper()}:{target_time_str}:{base_date}:{base_time}"
+    if _weather_redis is not None:
+        try:
+            hit = _weather_redis.get(cache_key)
+            if hit is not None:
+                return None if hit == "None" else float(hit)
+        except Exception:
+            pass
+
     params = {
         "authKey": auth_key, "pageNo": "1", "numOfRows": "1000", "dataType": "JSON", "base_date": base_date, "base_time": base_time, "nx": str(info["grid"]["nx"]), "ny": str(info["grid"]["ny"]),
     }
@@ -100,36 +120,63 @@ def get_stadium_temperature(scode: str, target_hour: int, *, auth_key: str, time
             if it.get("category") == "TMP" and it.get("fcstTime") == target_time_str:
                 tmp_val = float(it.get("fcstValue"))
                 break
-        return tmp_val
     except Exception as e:
         print(f"Error fetching weather data: {e}")
-        return None
+        tmp_val = None
+
+    # 성공/실패 모두 캐시 (실패도 시간당 재시도 억제; 매 타석 재호출 방지)
+    if _weather_redis is not None:
+        try:
+            _weather_redis.setex(cache_key, WEATHER_TTL, "None" if tmp_val is None else str(tmp_val))
+        except Exception:
+            pass
+    return tmp_val
+
+CONDITION_TTL = 3600  # 컨디션은 (타자,투수) 매치업 단위로 시간당 캐시
+
 
 def calculate_condition(pcode: str, pitcher: str):
     """
-    ballrae_backend의 API를 통해 해당 타자의 시즌/최근 타율을 받아와서 컨디션 가중치 계산
+    타자의 시즌/최근 타율로 컨디션 가중치 계산.
+    realtime 엔드포인트가 내부에서 네이버 API를 타서 느리므로,
+    매 타석 재호출을 막기 위해 (타자,투수) 매치업 결과를 Redis에 캐시한다.
+    (설계 의도: 외부 의존 값은 캐싱해서 실시간 서빙 hot-path를 가볍게)
     """
+    cache_key = f"condition:{pcode}:{pitcher}"
+    if _weather_redis is not None:
+        try:
+            hit = _weather_redis.get(cache_key)
+            if hit is not None:
+                return float(hit)
+        except Exception:
+            pass
+
+    final_weight = 1.0
     try:
         url = f"http://ballrae-backend:8000/api/players/realtime/?batter={pcode}&pitcher={pitcher}"
-        response = requests.get(url, timeout=5)
-
+        response = requests.get(url, timeout=2)  # hot-path 이므로 짧게
         if response.status_code == 200:
             data = response.json()
-            # API에서 {"season_avg": 0.312, "recent_avg": 0.250, ...} 이런 식으로 내려온다고 가정
-            season_avg = data.get("season_2025")
-            recent_avg = data.get("recent_stats")
-            if not season_avg or not recent_avg or season_avg == 0:
-                return 1.0
-            beta = 0.5
-            condition_index = recent_avg / season_avg
-            final_weight = 1.0 + (condition_index - 1.0) * beta
-            return final_weight
+            # 실제 응답 구조: {"data": {"batter": {"season_2025": {"avg": ...}, "recent_stats": <float>}}}
+            batter = (data.get("data") or {}).get("batter") or {}
+            season = batter.get("season_2025") or {}
+            season_avg = season.get("avg") if isinstance(season, dict) else None
+            recent_avg = batter.get("recent_stats")
+            if season_avg and recent_avg and season_avg != 0:
+                condition_index = recent_avg / season_avg
+                final_weight = 1.0 + (condition_index - 1.0) * 0.5
         else:
             print(f"컨디션 API 호출 실패: status={response.status_code}")
-            return 1.0
     except Exception as e:
         print(f"컨디션 API 호출 중 오류: {e}")
-        return 1.0
+
+    # 성공/실패(1.0 폴백) 모두 캐시 → 같은 매치업 재호출 방지
+    if _weather_redis is not None:
+        try:
+            _weather_redis.setex(cache_key, CONDITION_TTL, str(final_weight))
+        except Exception:
+            pass
+    return final_weight
 
 def streak_weight(loss_streak):
     if loss_streak is None or loss_streak <= 2: return 1.0
