@@ -6,10 +6,8 @@ services:
     restart: always
     env_file:
       - .env
-    ports:
-      # 호스트 5432가 이미 점유된 환경 대비: 호스트는 5433으로 발행.
-      # 컨테이너 간 통신은 내부 네트워크 db:5432 그대로라 영향 없음.
-      - "5433:5432"
+    # 호스트 접속 불필요(내부는 db:5432). 호스트 포트 충돌 회피 위해 발행 제거.
+    # 호스트에서 psql 필요하면 'docker compose exec db psql -U jihee -d ballrae' 사용.
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -23,7 +21,9 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      # 호스트 8000이 점유돼(잔여 docker-proxy) 8088로 발행. 컨테이너 내부는 8000 유지.
+      # 내부 통신(pli-api -> ballrae-backend:8000)은 영향 없음. 호스트에서는 localhost:8088.
+      - "8088:8000"
     depends_on:
       - db
 
@@ -45,7 +45,9 @@ services:
     image: redis:7
     container_name: ballrae-redis
     ports:
-      - "6379:6379"
+      # 호스트 6379가 이미 점유된 환경 대비: 호스트는 6380으로 발행.
+      # 컨테이너 간 통신은 내부 네트워크 ballrae-redis:6379 그대로라 영향 없음.
+      - "6380:6379"
     restart: no
 
 
@@ -102,8 +104,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: ballrae-zookeeper
-    ports:
-      - "2181:2181"
+    # 호스트에서 접속할 일이 없어 포트 발행 제거 (컨테이너 간 ballrae-zookeeper:2181 내부 통신)
     restart: no
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -113,8 +114,7 @@ services:
     image: confluentinc/cp-kafka:7.4.0
     container_name: ballrae-kafka
     user: "root"
-    ports:
-      - "9092:9092"
+    # 호스트 접속 불필요(advertised listener가 kafka:9092라 호스트 발행은 무의미) → 포트 제거
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: ballrae-zookeeper:2181
