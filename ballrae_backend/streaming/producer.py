@@ -724,7 +724,7 @@ def get_realtime_data():
         game_id = f"{date}{away_team}{home_team}{dh}{year}"
         new_game_id.append(game_id)
 
-    topic = '2025'
+    topic = '2026'
 
     producer = KafkaProducer(
         bootstrap_servers='kafka:9092',
@@ -840,7 +840,7 @@ def realtime_test():
         game_id = f"{date}{away_team}{home_team}{dh}{year}"
         new_game_id.append(game_id)
 
-    topic = '2025'
+    topic = '2026'
 
     producer = KafkaProducer(
         bootstrap_servers='kafka:9092',
@@ -879,16 +879,14 @@ def test():
     if game_done: sys.exit(0)
 
 def main():
+    # 라이브 진입점: 오늘 날짜 경기를 실시간 크롤 → Kafka(2026) 전송.
+    get_realtime_data()
+
+    # --- 과거 데이터 적재/테스트용 (필요할 때만 주석 해제) ---
     # test()
     # realtime_test()
-    # get_realtime_data()
-
-    # get_all_game_datas(2025)
-    # get_all_game_datas(2024)
-    # get_all_game_datas(2023)
-
-    get_game_datas(20251006, 20251015)
-    # get_game_datas(20240425, 20241130)
+    # get_all_game_datas(2026)
+    # get_game_datas(20260705, 20260708)
 
 if __name__ == "__main__":
     main()

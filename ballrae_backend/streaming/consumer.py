@@ -3,15 +3,30 @@ import json
 import os
 import django
 import sys
+import threading
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ballrae_backend.settings")
 django.setup()
 
-from ballrae_backend.games.services import save_at_bat_transactionally
+from ballrae_backend.games.services import save_at_bat_transactionally, get_pli_batch_and_cache
 from streaming.redis_client import redis_client
 
 DEFAULT_TTL = 24 * 60 * 60  # 하루
+
+
+def warm_pli_cache(game_id: str, atbats: list):
+    """
+    Redis 저장 직후 백그라운드에서 PLI 를 미리 계산·캐시(사전 워밍).
+    서빙(GameRelayView)이 항상 캐시 히트가 되어 실시간 지연을 없앤다.
+    get_pli_batch_and_cache 가 채우는 캐시 키와 서빙이 조회하는 키가 동일하다.
+    consumer 흐름을 막지 않도록 데몬 스레드에서 best-effort 로 실행.
+    """
+    try:
+        get_pli_batch_and_cache(list(atbats), game_id)
+        print(f"🔥 PLI 사전계산 완료: {game_id} ({len(atbats)} atbats)")
+    except Exception as e:
+        print(f"⚠️ PLI 사전계산 실패({game_id}): {e}")
 
 # ---- 추가: 메시지 -> Redis 저장 스키마로 정규화 ----
 def normalize_for_redis(msg: dict) -> dict:
@@ -62,6 +77,13 @@ def save_relay_to_redis(relay_data: dict):
             redis_client.set(inning_key, json.dumps(half_inning), ex=DEFAULT_TTL)
             print(f"✅ 저장 완료: {inning_key}")
 
+            # PLI 사전 워밍: 저장 직후 백그라운드로 미리 계산·캐시 → 서빙은 캐시 히트만
+            atbats = half_inning.get('atbats', [])
+            if atbats:
+                threading.Thread(
+                    target=warm_pli_cache, args=(game_id, atbats), daemon=True
+                ).start()
+
     except Exception as e:
         print(f"❌ Redis 저장 실패: {e}")
 
@@ -98,7 +120,7 @@ valid_keys = [f"{i}회초" for i in range(1, 12)] + [f"{i}회말" for i in range
 
 try:
     consumer = KafkaConsumer(
-        '2025', 
+        '2026',
         bootstrap_servers='kafka:9092',
         auto_offset_reset='earliest',
         enable_auto_commit=True,
