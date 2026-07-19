@@ -27,8 +27,8 @@ app = FastAPI()
 # --- 6. API 엔드포인트 정의 ---
 @app.post("/calculate_pli")
 async def calculate_pli_endpoint(data: AtBatData):
-    pli_val, base_we, w_total = calculate_single_pli(data)
-    return {"pli": pli_val, "base_we": base_we, "total_weight": w_total}
+    pli_val, li, base_we, w_total = calculate_single_pli(data)
+    return {"pli": pli_val, "li": li, "base_we": base_we, "total_weight": w_total}
 
 # --- 7. 원본 데이터를 처리하는 API 엔드포인트 ---
 @app.post("/calculate_pli_raw")
@@ -46,9 +46,10 @@ async def calculate_pli_raw_sync(raw_data: dict):
     try:
         processed = process_raw_atbat_data(raw_data)
         model = AtBatData(**processed)
-        pli_val, base_we, w_total = calculate_single_pli(model)
+        pli_val, li, base_we, w_total = calculate_single_pli(model)
         return {
             "pli": round(pli_val, 4),
+            "li": round(li, 2),
             "base_we": round(base_we, 4),
             "total_weight": round(w_total, 4),
         }
