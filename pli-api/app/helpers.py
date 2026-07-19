@@ -232,7 +232,9 @@ def calculate_single_pli(atbat_data: AtBatData):
         else:
             return pli_val, base_we, w_total
     except Exception as e:
-        print(e)
+        print("calculate_single_pli error:", e)
+        # 언패킹 실패(None 반환)로 상위에서 500 나지 않도록 중립값 폴백
+        return 0.5, 0.5, 1.0
 
 # --- 8. 원본 데이터 가공 함수 (모든 가중치 함수 호출) ---
 def process_raw_atbat_data(raw_data) -> dict:
@@ -241,26 +243,38 @@ def process_raw_atbat_data(raw_data) -> dict:
 
     if type(raw_data) == str:
         raw_data = json.loads(raw_data)
-    outs = int(raw_data.get("out", 0))
-    score_str = raw_data.get("score", "0:0")
-    away_score, home_score = map(int, score_str.split(':'))
+
+    # 라이브 데이터는 필드가 None/형식 불일치인 타석이 종종 있으므로 방어적으로 파싱.
+    try:
+        outs = int(raw_data.get("out") or 0)
+    except (TypeError, ValueError):
+        outs = 0
+
+    score_str = raw_data.get("score") or "0:0"
+    try:
+        away_score, home_score = map(int, str(score_str).split(':'))
+    except Exception:
+        away_score, home_score = 0, 0
     score_diff = home_score - away_score
-    on_base = raw_data.get("on_base", {"base1": "0", "base2": "0", "base3": "0"})
-    runners_code = str(on_base["base1"]) + str(on_base["base2"]) + str(on_base["base3"])
-    # batter_pcode = raw_data.get("actual_batter", {}).get("pcode", None)
+
+    on_base = raw_data.get("on_base")
+    if not isinstance(on_base, dict):
+        on_base = {"base1": "0", "base2": "0", "base3": "0"}
+    runners_code = f"{on_base.get('base1', 0)}{on_base.get('base2', 0)}{on_base.get('base3', 0)}"
+
     batter_pcode = raw_data.get("actual_batter")
-    main_result = raw_data.get("main_result")
-    full_result = raw_data.get("full_result")
+    main_result = raw_data.get("main_result") or ""
+    full_result = raw_data.get("full_result") or ""
     pitcher = raw_data.get("pitcher")
 
     next_batter_after_error = next_error or False
 
-    # 이제 여기에서 모든 함수를 호출해 실제 값을 가져옵니다.
     stadium_code = raw_data.get("stadium")
-    loss_streak = raw_data.get("streak") # 임시 기본값
-    pinch_event = True if '대타' in (main_result or full_result) else False
-    intentional_walk = True if '고의 4구' in main_result else False
-    error_happened = True if '실책' in (main_result or full_result) else False
+    loss_streak = raw_data.get("streak")
+    combined_result = main_result or full_result
+    pinch_event = '대타' in combined_result
+    intentional_walk = '고의 4구' in main_result
+    error_happened = '실책' in combined_result
 
     # 전역 변수로 next_error 상태를 저장하여 다음 함수 호출 시에도 사용할 수 있도록 함
     # 함수 외부에서 선언된 전역 변수를 수정
@@ -274,12 +288,12 @@ def process_raw_atbat_data(raw_data) -> dict:
     weather_temp = get_stadium_temperature(stadium_code, target_hour=datetime.now().hour, auth_key=WEATHER_API_KEY)
 
     return {
-        "inning": raw_data.get("inning"),
-        "half": raw_data.get("half"),
+        "inning": int(raw_data.get("inning") or 0),
+        "half": raw_data.get("half") or "top",
         "outs": outs,
         "score_diff": score_diff,
         "runners_code": runners_code,
-        "batter_id": batter_pcode,
+        "batter_id": str(batter_pcode) if batter_pcode is not None else "",
         "stadium_code": stadium_code,
         "temp_c": weather_temp,
         "loss_streak": loss_streak,
@@ -287,5 +301,5 @@ def process_raw_atbat_data(raw_data) -> dict:
         "intentional_walk": intentional_walk,
         "error_happened": error_happened,
         "next_batter_after_error": next_batter_after_error,
-        "pitcher": pitcher
+        "pitcher": str(pitcher) if pitcher is not None else "",
     }

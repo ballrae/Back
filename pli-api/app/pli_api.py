@@ -41,14 +41,20 @@ async def calculate_pli_raw(raw_data: dict):
 # 결과를 바로 받아야 하는 호출자를 위한 동기 버전.
 @app.post("/calculate_pli_raw_sync")
 async def calculate_pli_raw_sync(raw_data: dict):
-    processed = process_raw_atbat_data(raw_data)
-    model = AtBatData(**processed)
-    pli_val, base_we, w_total = calculate_single_pli(model)
-    return {
-        "pli": round(pli_val, 4),
-        "base_we": round(base_we, 4),
-        "total_weight": round(w_total, 4),
-    }
+    # 특정 타석(필드 None/형식 불일치)에서 500이 나면 호출자가 재시도 폭주하므로,
+    # 실패해도 200 + 마커로 응답해 재시도 스톰을 막는다(그 타석만 PLI 생략).
+    try:
+        processed = process_raw_atbat_data(raw_data)
+        model = AtBatData(**processed)
+        pli_val, base_we, w_total = calculate_single_pli(model)
+        return {
+            "pli": round(pli_val, 4),
+            "base_we": round(base_we, 4),
+            "total_weight": round(w_total, 4),
+        }
+    except Exception as e:
+        print("calculate_pli_raw_sync error:", repr(e))
+        return {"error": "pli_compute_failed", "detail": str(e)}
 
 @app.get("/test")
 async def test_endpoint():
